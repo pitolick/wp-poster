@@ -1,14 +1,14 @@
-# CLAUDE.md — pitolick/wp-poster
+# CLAUDE.md — wp-poster
 
 ## プロジェクト概要
 
-WordPress 投稿機構の汎用 TypeScript ライブラリ。`filmlog-ai` や `ai-article-poster` など複数プロジェクトから submodule として利用される。
+WordPress 投稿機構の汎用 TypeScript ライブラリ。複数の WordPress 投稿プロジェクトから submodule として利用される想定で設計されている。
 
-- **e-comi リポジトリ**（`pitolick/ecomi`）のサブモジュールとして `plugins/wp-poster/` に配置される
 - Markdown を Gutenberg ブロックに変換し、WordPress REST API で投稿する責務だけを持つ
 - 記事生成・サイト固有ロジックは含めない（呼び出し側の責務）
+- 単独で `npm test` / `npm run typecheck` が成立する自己完結リポジトリ
 
-Issue の起票・Claude Code GitHub Actions の起動は **`pitolick/ecomi` リポジトリで行う**。
+Issue の起票・Claude Code GitHub Actions の起動は通常 **利用側の親リポジトリで行う**（このライブラリは PR レビューのみ）。
 
 ---
 
@@ -59,16 +59,4 @@ docs: ドキュメントを更新
 
 ## 仕様書の場所
 
-設計の全体像は親リポジトリの以下を参照:
-
-- `pitolick/ecomi`: `docs/superpowers/specs/2026-05-13-ai-plugins-detach-from-wp-design.md`
-
----
-
-## 関連リポジトリ
-
-| リポジトリ | 関係 |
-|---|---|
-| `pitolick/ecomi` | 親リポジトリ（Issue 起票・オーケストレーター） |
-| `pitolick/ai-article-poster` | wp-poster を submodule として利用 |
-| `pitolick/filmlog-ai` | （将来）wp-poster を submodule として利用予定 |
+設計の全体像は利用側プロジェクトの設計書を参照する。このリポジトリ単体での公開仕様は README.md と `src/types.ts` の TSDoc に集約する。
