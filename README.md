@@ -1,6 +1,6 @@
 # wp-poster
 
-WordPress 投稿機構の汎用 TypeScript ライブラリ。`@pitolick/wp-poster` として `filmlog-ai`・`ai-article-poster` など複数プロジェクトから submodule として利用される。
+WordPress 投稿機構の汎用 TypeScript ライブラリ。`@pitolick/wp-poster` として複数プロジェクトから submodule として利用される。
 
 ## 責務
 
@@ -17,9 +17,13 @@ WordPress 投稿機構の汎用 TypeScript ライブラリ。`@pitolick/wp-poste
 import { WPPoster } from '@pitolick/wp-poster';
 import type { MarkerTransformer } from '@pitolick/wp-poster';
 
-const affilicardMarker: MarkerTransformer = {
-  pattern: /\[affilicard id="(\d+)"\]/g,
-  toBlock: (m) => `<!-- wp:shortcode -->\n[affilicard id="${m[1]}"]\n<!-- /wp:shortcode -->`,
+// Markdown 中の独自パターンを Gutenberg ブロックに置換するマーカーの例
+const youtubeMarker: MarkerTransformer = {
+  pattern: /\[youtube id="([\w-]+)"\]/g,
+  toBlock: (m) =>
+    `<!-- wp:embed {"url":"https://www.youtube.com/watch?v=${m[1]}","type":"video"} -->\n` +
+    `<figure class="wp-block-embed">https://www.youtube.com/watch?v=${m[1]}</figure>\n` +
+    `<!-- /wp:embed -->`,
 };
 
 const poster = new WPPoster({
@@ -29,14 +33,14 @@ const poster = new WPPoster({
 });
 
 const post = await poster.publish({
-  title: '今月のセール',
-  content: '本日から〜\n\n[affilicard id="42"]\n\n以上です。',
+  title: 'サンプル投稿',
+  content: '本文の前置き。\n\n[youtube id="dQw4w9WgXcQ"]\n\n埋め込みの後の段落。',
   status: 'draft',
-  tags: ['manga', 'sale'],
+  tags: ['typescript', 'wordpress'],
   categories: ['blog'],
-  featuredImage: { source: 'https://cdn.example.com/cover.jpg', alt: 'カバー' },
+  featuredImage: { source: 'https://example.com/cover.jpg', alt: 'カバー画像' },
   meta: { rank_math_title: 'SEO タイトル', rank_math_description: 'SEO 説明' },
-  markerTransformers: [affilicardMarker],
+  markerTransformers: [youtubeMarker],
 });
 
 console.log(post.link);
@@ -90,7 +94,7 @@ interface MarkerTransformer {
 ## テスト
 
 ```bash
-npm test          # ルート（e-comi）から
+npm test          # 親リポジトリのルートから（npm workspaces を利用）
 npm run test:watch
 ```
 
