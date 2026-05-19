@@ -25,6 +25,12 @@ function renderToken(token: Token): string {
       return renderParagraph(token as Tokens.Paragraph);
     case 'hr':
       return wrapBlock('separator', '<hr class="wp-block-separator"/>');
+    case 'list':
+      return renderList(token as Tokens.List);
+    case 'blockquote':
+      return renderBlockquote(token as Tokens.Blockquote);
+    case 'code':
+      return renderCode(token as Tokens.Code);
     case 'space':
       return '';
     default:
@@ -39,8 +45,43 @@ function renderHeading(t: Tokens.Heading): string {
 }
 
 function renderParagraph(t: Tokens.Paragraph): string {
+  // 単独の画像トークンだけの段落は core/image に変換
+  if (t.tokens && t.tokens.length === 1 && t.tokens[0].type === 'image') {
+    const img = t.tokens[0] as Tokens.Image;
+    return wrapBlock(
+      'image',
+      `<figure class="wp-block-image"><img src="${img.href}" alt="${img.text ?? ''}"/></figure>`,
+    );
+  }
   const inline = renderInlineText(t.text);
   return wrapBlock('paragraph', `<p>${inline}</p>`);
+}
+
+function renderList(t: Tokens.List): string {
+  const tag = t.ordered ? 'ol' : 'ul';
+  const blockName = t.ordered ? 'list {"ordered":true}' : 'list';
+  const items = t.items
+    .map((item) => `<li>${renderInlineText(item.text)}</li>`)
+    .join('');
+  return wrapBlock(blockName, `<${tag} class="wp-block-list">${items}</${tag}>`);
+}
+
+function renderBlockquote(t: Tokens.Blockquote): string {
+  const inner = (t.tokens ?? []).map(renderToken).filter(Boolean).join('');
+  return wrapBlock('quote', `<blockquote class="wp-block-quote">${inner}</blockquote>`);
+}
+
+function renderCode(t: Tokens.Code): string {
+  const text = escapeHtml(t.text);
+  return wrapBlock('code', `<pre class="wp-block-code"><code>${text}</code></pre>`);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function renderInlineText(raw: string): string {

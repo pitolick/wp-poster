@@ -32,3 +32,37 @@ describe('markdownToBlocks: 基本ブロック', () => {
     expect(matches?.length).toBe(2);
   });
 });
+
+describe('markdownToBlocks: 複合ブロック', () => {
+  it('順序なしリストを core/list で出力', () => {
+    const out = markdownToBlocks('- a\n- b\n- c');
+    expect(out).toContain('<!-- wp:list -->');
+    expect(out).toContain('<ul class="wp-block-list">');
+    expect(out).toContain('<li>a</li>');
+  });
+
+  it('順序付きリストは ordered 属性付き', () => {
+    const out = markdownToBlocks('1. one\n2. two');
+    expect(out).toContain('<!-- wp:list {"ordered":true} -->');
+    expect(out).toContain('<ol class="wp-block-list">');
+  });
+
+  it('引用ブロックを core/quote で出力', () => {
+    const out = markdownToBlocks('> 名言\n> 続き');
+    expect(out).toContain('<!-- wp:quote -->');
+    expect(out).toContain('<blockquote class="wp-block-quote">');
+  });
+
+  it('コードブロックを core/code で出力', () => {
+    const out = markdownToBlocks('```\nconst x = 1;\n```');
+    expect(out).toContain('<!-- wp:code -->');
+    expect(out).toContain('<pre class="wp-block-code"><code>');
+    expect(out).toContain('const x = 1;');
+  });
+
+  it('独立した画像段落を core/image で出力', () => {
+    const out = markdownToBlocks('![alt](https://example.com/x.jpg)');
+    expect(out).toContain('<!-- wp:image -->');
+    expect(out).toContain('<img src="https://example.com/x.jpg" alt="alt"');
+  });
+});
