@@ -181,3 +181,36 @@ describe('WPClient タグ・カテゴリ解決', () => {
     expect(ids).toEqual([11]);
   });
 });
+
+describe('WPClient.uploadMedia', () => {
+  it('multipart で /wp/v2/media に POST する', async () => {
+    let receivedHeaders: Record<string, string> = {};
+    let receivedBody: RequestInit['body'];
+    let firstCall = true;
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      if (firstCall) {
+        receivedHeaders = init.headers as Record<string, string>;
+        receivedBody = init.body;
+        firstCall = false;
+      }
+      return new Response(JSON.stringify({ id: 77, source_url: 'https://e/x.jpg', media_type: 'image' }), {
+        status: 201, headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const data = new Uint8Array([0xff, 0xd8, 0xff]);
+    const media = await client.uploadMedia({
+      data,
+      filename: 'x.jpg',
+      mimeType: 'image/jpeg',
+      alt: 'alt text',
+    });
+
+    expect(media.id).toBe(77);
+    expect(receivedHeaders['Content-Disposition']).toBe('attachment; filename="x.jpg"');
+    expect(receivedHeaders['Content-Type']).toBe('image/jpeg');
+    // 生のバイナリ body
+    expect(receivedBody).toBeInstanceOf(Uint8Array);
+  });
+});
