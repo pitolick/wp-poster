@@ -1,0 +1,28 @@
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "landingPage": "/wp-admin/profile.php",
+  "preferredVersions": {
+    "php": "8.2",
+    "wp": "latest"
+  },
+  "features": {
+    "networking": true
+  },
+  "steps": [
+    { "step": "login" },
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "seo-by-rank-math"
+      }
+    },
+    {
+      "step": "setSiteOptions",
+      "options": {
+        "blogname": "wp-poster dev",
+        "blogdescription": "wp-poster 検証環境"
+      }
+    }
+  ]
+}
