@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { WPClient } from '../src/client.js';
-import { WPRequestError } from '../src/errors.js';
 
 function makeFetchOk<T>(body: T, init: ResponseInit = { status: 200 }): typeof fetch {
   return vi.fn(async () => new Response(JSON.stringify(body), {
