@@ -111,3 +111,73 @@ describe('WPClient.createPost / updatePost', () => {
     expect(url).toBe('https://e/wp-json/wp/v2/posts/42');
   });
 });
+
+describe('WPClient タグ・カテゴリ解決', () => {
+  it('resolveTagIds: 既存タグはそのまま、未存在は作成する', async () => {
+    const calls: { url: string; method: string; body?: unknown }[] = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({
+        url,
+        method: init.method ?? 'GET',
+        body: init.body ? JSON.parse(init.body as string) : undefined,
+      });
+      // 1: 検索「foo」→ 既存（id=1）
+      // 2: 検索「bar」→ 該当なし
+      // 3: POST 作成「bar」→ id=2
+      if (url.includes('/tags?search=foo')) {
+        return new Response(JSON.stringify([{ id: 1, name: 'foo', slug: 'foo' }]), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/tags?search=bar') && init.method !== 'POST') {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.endsWith('/tags') && init.method === 'POST') {
+        return new Response(JSON.stringify({ id: 2, name: 'bar', slug: 'bar' }), {
+          status: 201, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const ids = await client.resolveTagIds(['foo', 'bar']);
+    expect(ids).toEqual([1, 2]);
+    expect(calls.filter((c) => c.method === 'POST').length).toBe(1);
+  });
+
+  it('resolveCategoryIds は /categories エンドポイントを使う', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/categories?search=manga')) {
+        return new Response(JSON.stringify([{ id: 5, name: 'manga', slug: 'manga' }]), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const ids = await client.resolveCategoryIds(['manga']);
+    expect(ids).toEqual([5]);
+  });
+
+  it('resolveTagIds: 完全一致のみ既存扱い（部分一致は新規作成）', async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.includes('/tags?search=ai') && init.method !== 'POST') {
+        return new Response(JSON.stringify([{ id: 10, name: 'AI Tools', slug: 'ai-tools' }]), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/tags') && init.method === 'POST') {
+        return new Response(JSON.stringify({ id: 11, name: 'ai', slug: 'ai' }), {
+          status: 201, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const ids = await client.resolveTagIds(['ai']);
+    expect(ids).toEqual([11]);
+  });
+});
