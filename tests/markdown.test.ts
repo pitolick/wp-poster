@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { markdownToBlocks } from '../src/markdown.js';
+import type { MarkerTransformer } from '../src/types.js';
 
 describe('markdownToBlocks: 基本ブロック', () => {
   it('段落を core/paragraph で出力', () => {
@@ -64,5 +65,31 @@ describe('markdownToBlocks: 複合ブロック', () => {
     const out = markdownToBlocks('![alt](https://example.com/x.jpg)');
     expect(out).toContain('<!-- wp:image -->');
     expect(out).toContain('<img src="https://example.com/x.jpg" alt="alt"');
+  });
+});
+
+const affilicardMarker: MarkerTransformer = {
+  pattern: /\[affilicard id="(\d+)"\]/g,
+  toBlock: (m) => `<!-- wp:shortcode -->\n[affilicard id="${m[1]}"]\n<!-- /wp:shortcode -->`,
+};
+
+describe('markdownToBlocks: マーカートランスフォーマー結合', () => {
+  it('段落内のマーカーがショートコードブロックに変換される', () => {
+    const md = '前文。\n\n[affilicard id="42"]\n\n後文。';
+    const out = markdownToBlocks(md, { markerTransformers: [affilicardMarker] });
+    expect(out).toContain('<!-- wp:shortcode -->');
+    expect(out).toContain('[affilicard id="42"]');
+    // marked が <p> で包んでしまうのを取り除けていること
+    expect(out).not.toContain('<p>__WPP_MARKER_');
+    // 前文・後文は通常段落として残る
+    expect(out).toContain('<p>前文。</p>');
+    expect(out).toContain('<p>後文。</p>');
+  });
+
+  it('マーカーがない場合は通常の変換と同じ', () => {
+    const md = 'こんにちは';
+    const a = markdownToBlocks(md);
+    const b = markdownToBlocks(md, { markerTransformers: [affilicardMarker] });
+    expect(a).toBe(b);
   });
 });

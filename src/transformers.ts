@@ -46,13 +46,27 @@ export function extractMarkers(
  * marked が生成した HTML 中のプレースホルダを Gutenberg ブロックに戻す。
  * marked は `<p>__WPP_MARKER_0__</p>` のようにパラグラフで包むことがあるので、
  * 包んでいるタグごと取り除く。
+ * また `__TOKEN__` は marked が `<strong>TOKEN</strong>` にレンダリングする場合があるため、
+ * `<p><strong>WPP_MARKER_N</strong></p>` 形式も検出して取り除く。
  */
 export function restoreMarkers(html: string, placeholders: Placeholder[]): string {
   let out = html;
   for (const ph of placeholders) {
-    const wrapped = new RegExp(`<p>\\s*${escapeRegex(ph.token)}\\s*</p>`, 'g');
-    if (wrapped.test(out)) {
-      out = out.replace(wrapped, ph.block);
+    // パターン 1: <p>__WPP_MARKER_N__</p>（そのままプレースホルダが段落に包まれた場合）
+    const wrappedPlain = new RegExp(`<p>\\s*${escapeRegex(ph.token)}\\s*</p>`, 'g');
+    if (wrappedPlain.test(out)) {
+      out = out.replace(wrappedPlain, ph.block);
+      continue;
+    }
+    // パターン 2: <p><strong>WPP_MARKER_N</strong></p>
+    // marked が __ をボールド記法として解釈した場合
+    const innerToken = ph.token.replace(/^__|__$/g, '');
+    const wrappedBold = new RegExp(
+      `<p>\\s*<strong>${escapeRegex(innerToken)}</strong>\\s*</p>`,
+      'g',
+    );
+    if (wrappedBold.test(out)) {
+      out = out.replace(wrappedBold, ph.block);
       continue;
     }
     out = out.split(ph.token).join(ph.block);
