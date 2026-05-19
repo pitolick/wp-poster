@@ -30,6 +30,23 @@ describe('downloadImage', () => {
     expect(img.filename).toBe('cover.webp');
   });
 
+  it('URL の最終セグメントが拡張子を持たない場合、Content-Type から拡張子を補完する', async () => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+      status: 200, headers: { 'content-type': 'image/png' },
+    })) as unknown as typeof fetch;
+    // placehold.co/600x400/png のように拡張子ではなく形式名がパス末尾にあるケース
+    const img = await downloadImage('https://placehold.co/600x400/png', { fetch: fetchMock });
+    expect(img.mimeType).toBe('image/png');
+    expect(img.filename).toBe('png.png');
+  });
+
+  it('Content-Type もファイル名も拡張子情報なしの場合は .bin で代替する', async () => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1]), { status: 200 })) as unknown as typeof fetch;
+    const img = await downloadImage('https://example.com/asset', { fetch: fetchMock });
+    expect(img.filename).toBe('asset.bin');
+    expect(img.mimeType).toBe('application/octet-stream');
+  });
+
   it('4xx はエラーになる', async () => {
     const fetchMock = vi.fn(async () => new Response('not found', { status: 404 })) as unknown as typeof fetch;
     await expect(downloadImage('https://example.com/x.png', { fetch: fetchMock }))

@@ -21,6 +21,16 @@ const MIME_FROM_EXT: Record<string, string> = {
   svg: 'image/svg+xml',
 };
 
+const EXT_FROM_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+};
+
+const KNOWN_IMAGE_EXTS = new Set(Object.keys(MIME_FROM_EXT));
+
 export async function downloadImage(url: string, options: DownloadOptions = {}): Promise<DownloadedImage> {
   const f = options.fetch ?? globalThis.fetch;
   const res = await f(url, { method: 'GET' });
@@ -29,11 +39,17 @@ export async function downloadImage(url: string, options: DownloadOptions = {}):
   }
 
   const buffer = new Uint8Array(await res.arrayBuffer());
-  const filename = extractFilename(url);
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const rawName = extractFilename(url);
+  const rawExt = rawName.includes('.') ? rawName.split('.').pop()!.toLowerCase() : '';
   // content-type は "image/jpeg; charset=utf-8" のようにパラメータを含む場合があるので分離する
   const contentType = res.headers.get('content-type')?.split(';')[0].trim();
-  const mimeType = contentType || MIME_FROM_EXT[ext] || 'application/octet-stream';
+  const mimeType = contentType || MIME_FROM_EXT[rawExt] || 'application/octet-stream';
+
+  // ファイル名が拡張子なし、または画像拡張子として未認識の場合、
+  // MIME タイプから拡張子を補完する（WordPress は filename の拡張子で MIME 判定するため）
+  const filename = KNOWN_IMAGE_EXTS.has(rawExt)
+    ? rawName
+    : `${rawName}.${EXT_FROM_MIME[mimeType] ?? 'bin'}`;
 
   return { data: buffer, mimeType, filename };
 }
