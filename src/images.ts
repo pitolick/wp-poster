@@ -31,7 +31,9 @@ export async function downloadImage(url: string, options: DownloadOptions = {}):
   const buffer = new Uint8Array(await res.arrayBuffer());
   const filename = extractFilename(url);
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  const mimeType = res.headers.get('content-type') ?? MIME_FROM_EXT[ext] ?? 'application/octet-stream';
+  // content-type は "image/jpeg; charset=utf-8" のようにパラメータを含む場合があるので分離する
+  const contentType = res.headers.get('content-type')?.split(';')[0].trim();
+  const mimeType = contentType || MIME_FROM_EXT[ext] || 'application/octet-stream';
 
   return { data: buffer, mimeType, filename };
 }

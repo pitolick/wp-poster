@@ -30,8 +30,12 @@ export function extractMarkers(
       : new RegExp(tr.pattern.source, tr.pattern.flags + 'g');
 
     text = text.replace(re, (...args: unknown[]) => {
-      // String.prototype.replace は (match, ...groups, offset, string) を渡す
-      const match = args.slice(0, -2) as unknown as RegExpMatchArray;
+      // String.prototype.replace は (match, ...groups, offset, string[, groups?]) を渡す。
+      // 名前付きキャプチャがあるとき末尾に groups オブジェクトが追加されるので検出して除外する
+      const last = args[args.length - 1];
+      const hasGroupsObj = typeof last === 'object' && last !== null;
+      const tailCount = hasGroupsObj ? 3 : 2;
+      const match = args.slice(0, args.length - tailCount) as unknown as RegExpMatchArray;
       const block = tr.toBlock(match);
       const token = `${TOKEN_PREFIX}${placeholders.length}${TOKEN_SUFFIX}`;
       placeholders.push({ token, block });
@@ -53,9 +57,11 @@ export function restoreMarkers(html: string, placeholders: Placeholder[]): strin
   let out = html;
   for (const ph of placeholders) {
     // パターン 1: <p>__WPP_MARKER_N__</p>（そのままプレースホルダが段落に包まれた場合）
+    // test() ではなく replace() の戻り値と元文字列を比較することで RegExp.lastIndex 状態を意識せずに済ませる
     const wrappedPlain = new RegExp(`<p>\\s*${escapeRegex(ph.token)}\\s*</p>`, 'g');
-    if (wrappedPlain.test(out)) {
-      out = out.replace(wrappedPlain, ph.block);
+    const afterPlain = out.replace(wrappedPlain, ph.block);
+    if (afterPlain !== out) {
+      out = afterPlain;
       continue;
     }
     // パターン 2: <p><strong>WPP_MARKER_N</strong></p>
@@ -65,8 +71,9 @@ export function restoreMarkers(html: string, placeholders: Placeholder[]): strin
       `<p>\\s*<strong>${escapeRegex(innerToken)}</strong>\\s*</p>`,
       'g',
     );
-    if (wrappedBold.test(out)) {
-      out = out.replace(wrappedBold, ph.block);
+    const afterBold = out.replace(wrappedBold, ph.block);
+    if (afterBold !== out) {
+      out = afterBold;
       continue;
     }
     out = out.split(ph.token).join(ph.block);
