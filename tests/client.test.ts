@@ -80,3 +80,34 @@ describe('WPClient', () => {
     expect(url).toBe('https://example.com/wp-json/wp/v2/posts');
   });
 });
+
+describe('WPClient.createPost / updatePost', () => {
+  it('createPost は POST /wp/v2/posts に payload を送る', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ id: 42, link: 'https://e/p', status: 'draft', date: '2026-05-19T00:00:00', title: { rendered: 'T' } }),
+      { status: 201, headers: { 'content-type': 'application/json' } },
+    )) as unknown as typeof fetch;
+    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+
+    const res = await client.createPost({ title: 'T', content: '<p>x</p>', status: 'draft' });
+
+    expect(res.id).toBe(42);
+    const [url, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+    expect(url).toBe('https://e/wp-json/wp/v2/posts');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ title: 'T', content: '<p>x</p>', status: 'draft' });
+  });
+
+  it('updatePost は POST /wp/v2/posts/:id に payload を送る', async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({ id: 42, link: 'l', status: 'publish', date: 'd', title: { rendered: 'T' } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )) as unknown as typeof fetch;
+    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+
+    await client.updatePost(42, { status: 'publish' });
+
+    const [url] = (fetchMock as unknown as { mock: { calls: [string][] } }).mock.calls[0];
+    expect(url).toBe('https://e/wp-json/wp/v2/posts/42');
+  });
+});
