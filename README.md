@@ -18,12 +18,29 @@ import { WPPoster } from '@pitolick/wp-poster';
 import type { MarkerTransformer } from '@pitolick/wp-poster';
 
 // Markdown 中の独自パターンを Gutenberg ブロックに置換するマーカーの例
+// 注意: Gutenberg のブロックバリデーションが厳格なため、各ブロック種別の
+// 公式正規形式（属性 / class / 改行位置）を厳密に守る必要がある。
+// 不足があるとエディタで「無効なコンテンツ」と表示される。
 const youtubeMarker: MarkerTransformer = {
   pattern: /\[youtube id="([\w-]+)"\]/g,
-  toBlock: (m) =>
-    `<!-- wp:embed {"url":"https://www.youtube.com/watch?v=${m[1]}","type":"video"} -->\n` +
-    `<figure class="wp-block-embed">https://www.youtube.com/watch?v=${m[1]}</figure>\n` +
-    `<!-- /wp:embed -->`,
+  toBlock: (m) => {
+    const url = `https://www.youtube.com/watch?v=${m[1]}`;
+    const attrs = JSON.stringify({
+      url,
+      type: 'video',
+      providerNameSlug: 'youtube',
+      responsive: true,
+      className: 'wp-embed-aspect-16-9 wp-has-aspect-ratio',
+    });
+    return (
+      `<!-- wp:embed ${attrs} -->\n` +
+      `<figure class="wp-block-embed is-type-video is-provider-youtube wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio">` +
+      `<div class="wp-block-embed__wrapper">\n` +
+      `${url}\n` +
+      `</div></figure>\n` +
+      `<!-- /wp:embed -->`
+    );
+  },
 };
 
 const poster = new WPPoster({
@@ -71,12 +88,30 @@ Markdown 中の任意パターンを Gutenberg ブロックに置換する。
 
 ```ts
 interface MarkerTransformer {
-  pattern: RegExp;     // global フラグ必須（無ければ自動付与）
-  toBlock: (match: RegExpMatchArray) => string;  // 出力するブロック HTML
+  pattern: RegExp; // global フラグ必須（無ければ自動付与）
+  toBlock: (match: RegExpMatchArray) => string; // 出力するブロック HTML
 }
 ```
 
 未マッチ部分は通常の Markdown → Gutenberg 変換にかけられる。
+
+#### マーカー配置の制約
+
+マーカーは **空行で囲んだ独立した段落** として配置すること。
+
+```md
+本文の段落。
+
+[youtube id="dQw4w9WgXcQ"]
+
+次の段落。
+```
+
+`toBlock` は Gutenberg の**トップレベルブロック**を返す前提のため、マーカーを段落の途中（インライン）に置くと、生成されたブロックが `<p>...</p>` の中に混入して Gutenberg が「無効なコンテンツ」として表示する可能性がある。
+
+#### ブロック HTML 形式の厳密さ
+
+Gutenberg のブロックバリデーションは寛容ではなく、`responsive` 属性 1 つ・class 1 つの欠落でブロック全体を破棄して空段落表示にする。`toBlock` で返す HTML は、エディタ画面で正しく表示されたブロックを「コードエディタ」表示でコピーした値を基準に組み立てるのが確実。
 
 ## サポートされる Gutenberg ブロック
 
