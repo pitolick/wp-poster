@@ -11,7 +11,7 @@ describe('extractMarkers / restoreMarkers', () => {
     const md = '前\n[affilicard id="42"]\n後';
     const { text, placeholders } = extractMarkers(md, [affilicard]);
     expect(text).not.toContain('[affilicard');
-    expect(text).toMatch(/__WPP_MARKER_\d+__/);
+    expect(text).toMatch(/WPP_MARKER_\d+_END/);
     expect(placeholders).toHaveLength(1);
     expect(placeholders[0].block).toContain('wp:shortcode');
   });

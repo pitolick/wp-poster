@@ -9,8 +9,10 @@ export interface Placeholder {
   block: string;
 }
 
-const TOKEN_PREFIX = '__WPP_MARKER_';
-const TOKEN_SUFFIX = '__';
+// CommonMark の emphasis ルールでは「単語内の _ 」は強調にならないため、
+// surrounding underscore なしのトークンにすることで marked が誤って <strong> 化するのを防ぐ
+const TOKEN_PREFIX = 'WPP_MARKER_';
+const TOKEN_SUFFIX = '_END';
 
 /**
  * Markdown テキストからマーカーを抽出し、プレースホルダトークンに置換する。
@@ -50,64 +52,45 @@ export function extractMarkers(
  * marked が生成した HTML 中のプレースホルダを Gutenberg ブロックに戻す。
  *
  * 検出パターン（優先度順）:
- *   A. `<!-- wp:paragraph --><p><strong>TOKEN</strong></p><!-- /wp:paragraph -->`
- *      → marked が `__TOKEN__` をボールド解釈し、markdown.ts が wp:paragraph で包んだ場合
- *   B. `<!-- wp:paragraph --><p>__TOKEN__</p><!-- /wp:paragraph -->`
- *      → marked がボールド解釈しなかったが wp:paragraph で包まれた場合
- *   C. `<p><strong>TOKEN</strong></p>` / `<p>__TOKEN__</p>`
- *      → wp:paragraph 外（テストやインラインケース）
- *   D. ベアトークン
- *      → 上記いずれにもマッチしないフォールバック
+ *   A. `<!-- wp:paragraph --><p>TOKEN</p><!-- /wp:paragraph -->`
+ *      → マーカーが独立段落として配置されたケース（推奨される使い方）
+ *   B. `<p>TOKEN</p>`
+ *      → wp:paragraph 外（直接 HTML に埋め込まれたケース・テスト用途）
+ *   C. ベアトークン
+ *      → 上記いずれにもマッチしないフォールバック（インラインケース等）
  *
- * パターン A/B でブロックコメントごと置換することで、Gutenberg の入れ子ブロック
+ * パターン A でブロックコメントごと置換することで、Gutenberg の入れ子ブロック
  * （wp:paragraph の中に wp:embed 等を入れる構造）が出来てしまう不具合を防ぐ。
+ *
+ * 注意: マーカーは独立段落として配置することを推奨。インラインに埋め込んだ場合は
+ * パターン C でベア置換されるため Gutenberg ブロックが `<p>...</p>` 内部に
+ * 混入し「無効なコンテンツ」となる可能性がある。
  */
 export function restoreMarkers(html: string, placeholders: Placeholder[]): string {
   let out = html;
   for (const ph of placeholders) {
-    const innerToken = ph.token.replace(/^__|__$/g, '');
     const tokenEsc = escapeRegex(ph.token);
-    const innerEsc = escapeRegex(innerToken);
 
-    // パターン A: wp:paragraph で包まれた <p><strong>TOKEN</strong></p>
-    const blockBold = new RegExp(
-      `<!-- wp:paragraph -->\\s*<p>\\s*<strong>${innerEsc}</strong>\\s*</p>\\s*<!-- /wp:paragraph -->`,
-      'g',
-    );
-    const afterBlockBold = out.replace(blockBold, ph.block);
-    if (afterBlockBold !== out) {
-      out = afterBlockBold;
-      continue;
-    }
-
-    // パターン B: wp:paragraph で包まれた <p>__TOKEN__</p>
-    const blockPlain = new RegExp(
+    // パターン A: wp:paragraph で包まれた <p>TOKEN</p> をブロックごと置換
+    const blockWrap = new RegExp(
       `<!-- wp:paragraph -->\\s*<p>\\s*${tokenEsc}\\s*</p>\\s*<!-- /wp:paragraph -->`,
       'g',
     );
-    const afterBlockPlain = out.replace(blockPlain, ph.block);
-    if (afterBlockPlain !== out) {
-      out = afterBlockPlain;
+    const afterBlock = out.replace(blockWrap, ph.block);
+    if (afterBlock !== out) {
+      out = afterBlock;
       continue;
     }
 
-    // パターン C-1: 単独 <p><strong>TOKEN</strong></p>
-    const inlineBold = new RegExp(`<p>\\s*<strong>${innerEsc}</strong>\\s*</p>`, 'g');
-    const afterInlineBold = out.replace(inlineBold, ph.block);
-    if (afterInlineBold !== out) {
-      out = afterInlineBold;
+    // パターン B: 単独 <p>TOKEN</p>（wp:paragraph コメントなし）
+    const paragraphOnly = new RegExp(`<p>\\s*${tokenEsc}\\s*</p>`, 'g');
+    const afterParagraph = out.replace(paragraphOnly, ph.block);
+    if (afterParagraph !== out) {
+      out = afterParagraph;
       continue;
     }
 
-    // パターン C-2: 単独 <p>__TOKEN__</p>
-    const inlinePlain = new RegExp(`<p>\\s*${tokenEsc}\\s*</p>`, 'g');
-    const afterInlinePlain = out.replace(inlinePlain, ph.block);
-    if (afterInlinePlain !== out) {
-      out = afterInlinePlain;
-      continue;
-    }
-
-    // パターン D: ベアトークン
+    // パターン C: ベアトークン置換（インラインケースのフォールバック）
     out = out.split(ph.token).join(ph.block);
   }
   return out;
