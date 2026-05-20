@@ -79,8 +79,8 @@ describe('markdownToBlocks: マーカートランスフォーマー結合', () =
     const out = markdownToBlocks(md, { markerTransformers: [affilicardMarker] });
     expect(out).toContain('<!-- wp:shortcode -->');
     expect(out).toContain('[affilicard id="42"]');
-    // marked が <p> で包んでしまうのを取り除けていること
-    expect(out).not.toContain('<p>__WPP_MARKER_');
+    // プレースホルダが残らないこと
+    expect(out).not.toContain('WPP_MARKER_');
     // 前文・後文は通常段落として残る
     expect(out).toContain('<p>前文。</p>');
     expect(out).toContain('<p>後文。</p>');
