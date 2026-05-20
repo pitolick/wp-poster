@@ -86,7 +86,7 @@ export class WPClient {
     const media = await this.postRaw<WPMedia>('/wp-json/wp/v2/media', {
       headers: {
         'Content-Type': opts.mimeType,
-        'Content-Disposition': `attachment; filename="${opts.filename}"`,
+        'Content-Disposition': buildContentDisposition(opts.filename),
       },
       body: opts.data,
     });
@@ -118,4 +118,26 @@ export class WPClient {
     }
     return body as T;
   }
+}
+
+/**
+ * Content-Disposition ヘッダ用にファイル名をサニタイズする。
+ *
+ * - 制御文字（CR/LF/TAB/DEL 等）を除去してヘッダインジェクションを防ぐ
+ * - quoted-string 内に出現する `"` と `\` をエスケープして引用符を壊さない
+ * - 非 ASCII を含む場合は RFC 6266 に従い `filename*=UTF-8''<encoded>` を併記
+ *   （`filename=` には ASCII フォールバックとして `?` を残す）
+ */
+export function buildContentDisposition(filename: string): string {
+  // 制御文字を除去（HTTP ヘッダインジェクション対策）
+  const noControl = filename.replace(/[\x00-\x1F\x7F]/g, '');
+  const escaped = noControl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+  const hasNonAscii = /[^\x20-\x7E]/.test(noControl);
+  if (hasNonAscii) {
+    const asciiFallback = escaped.replace(/[^\x20-\x7E]/g, '?');
+    const encoded = encodeURIComponent(noControl);
+    return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+  }
+  return `attachment; filename="${escaped}"`;
 }

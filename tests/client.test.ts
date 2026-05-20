@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { WPClient } from '../src/client.js';
+import { WPClient, buildContentDisposition } from '../src/client.js';
 
 function makeFetchOk<T>(body: T, init: ResponseInit = { status: 200 }): typeof fetch {
   return vi.fn(async () => new Response(JSON.stringify(body), {
@@ -211,5 +211,29 @@ describe('WPClient.uploadMedia', () => {
     expect(receivedHeaders['Content-Type']).toBe('image/jpeg');
     // 生のバイナリ body
     expect(receivedBody).toBeInstanceOf(Uint8Array);
+  });
+});
+
+describe('buildContentDisposition', () => {
+  it('通常の ASCII ファイル名は quoted-string で返す', () => {
+    expect(buildContentDisposition('cover.jpg')).toBe('attachment; filename="cover.jpg"');
+  });
+
+  it('ダブルクォートとバックスラッシュをエスケープする', () => {
+    expect(buildContentDisposition('a"b\\c.png')).toBe('attachment; filename="a\\"b\\\\c.png"');
+  });
+
+  it('改行を含むファイル名はヘッダインジェクションを防ぐため除去する', () => {
+    expect(buildContentDisposition('a\r\nInjected: x.png')).toBe(
+      'attachment; filename="aInjected: x.png"',
+    );
+  });
+
+  it('非 ASCII を含む場合は filename* に encodeURIComponent 結果を含める', () => {
+    const result = buildContentDisposition('表紙.jpg');
+    // 表紙 = 2 chars → ?? でフォールバック
+    expect(result).toContain('filename="??.jpg"');
+    expect(result).toContain("filename*=UTF-8''");
+    expect(result).toContain(encodeURIComponent('表紙.jpg'));
   });
 });
