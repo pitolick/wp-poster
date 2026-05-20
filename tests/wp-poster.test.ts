@@ -73,6 +73,43 @@ describe('WPPoster.publish', () => {
     expect((post!.body as { categories: number[] }).categories).toEqual([3]);
   });
 
+  it('featuredImage が undefined のときは featured_media を payload に含めない', async () => {
+    const { fetch: f, calls } = makeRecordingFetch((c) => {
+      if (c.url.endsWith('/wp/v2/posts') && c.method === 'POST') {
+        return jsonRes({ id: 1, link: '', status: 'draft', date: 'd', title: { rendered: '' } }, 201);
+      }
+      return jsonRes({}, 404);
+    });
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+
+    // featuredImage を指定しない（undefined）
+    await poster.publish({ title: 't', content: 'c' });
+
+    const post = calls.find((c) => c.url.endsWith('/wp/v2/posts') && c.method === 'POST');
+    // メディアアップロードは発生しない
+    expect(calls.some((c) => c.url.includes('/wp/v2/media'))).toBe(false);
+    // payload にも featured_media フィールドは存在しない
+    expect(post!.body as Record<string, unknown>).not.toHaveProperty('featured_media');
+  });
+
+  it('featuredImage を null にするとアイキャッチ解除（featured_media: 0）になる', async () => {
+    const { fetch: f, calls } = makeRecordingFetch((c) => {
+      if (c.url.endsWith('/wp/v2/posts') && c.method === 'POST') {
+        return jsonRes({ id: 1, link: '', status: 'draft', date: 'd', title: { rendered: '' } }, 201);
+      }
+      return jsonRes({}, 404);
+    });
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+
+    await poster.publish({ title: 't', content: 'c', featuredImage: null });
+
+    const post = calls.find((c) => c.url.endsWith('/wp/v2/posts') && c.method === 'POST');
+    // メディアアップロードは発生しない
+    expect(calls.some((c) => c.url.includes('/wp/v2/media'))).toBe(false);
+    // featured_media: 0 が設定される
+    expect((post!.body as { featured_media: number }).featured_media).toBe(0);
+  });
+
   it('featuredImage は media アップロード後に featured_media を設定', async () => {
     const { fetch: f, calls } = makeRecordingFetch((c) => {
       if (c.url === 'https://cdn/x.jpg') return new Response(new Uint8Array([1]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
