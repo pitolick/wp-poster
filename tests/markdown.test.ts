@@ -86,6 +86,21 @@ describe('markdownToBlocks: マーカートランスフォーマー結合', () =
     expect(out).toContain('<p>後文。</p>');
   });
 
+  it('マーカーが wp:paragraph ブロックに入れ子になっていない', () => {
+    // バグ: 単独段落のマーカーが <!-- wp:paragraph --> の中に wp:shortcode が
+    // 入れ子になって出力されると Gutenberg がブロックを破棄する。
+    const md = '前文。\n\n[affilicard id="42"]\n\n後文。';
+    const out = markdownToBlocks(md, { markerTransformers: [affilicardMarker] });
+    // wp:shortcode が wp:paragraph で包まれていない（直前の閉じが /wp:paragraph）
+    const shortcodeStart = out.indexOf('<!-- wp:shortcode -->');
+    expect(shortcodeStart).toBeGreaterThan(-1);
+    const before = out.slice(0, shortcodeStart);
+    const lastParagraphOpen = before.lastIndexOf('<!-- wp:paragraph -->');
+    const lastParagraphClose = before.lastIndexOf('<!-- /wp:paragraph -->');
+    // wp:shortcode の直前で開いている wp:paragraph があってはいけない
+    expect(lastParagraphClose).toBeGreaterThan(lastParagraphOpen);
+  });
+
   it('マーカーがない場合は通常の変換と同じ', () => {
     const md = 'こんにちは';
     const a = markdownToBlocks(md);
