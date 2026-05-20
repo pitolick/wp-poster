@@ -48,34 +48,66 @@ export function extractMarkers(
 
 /**
  * marked が生成した HTML 中のプレースホルダを Gutenberg ブロックに戻す。
- * marked は `<p>__WPP_MARKER_0__</p>` のようにパラグラフで包むことがあるので、
- * 包んでいるタグごと取り除く。
- * また `__TOKEN__` は marked が `<strong>TOKEN</strong>` にレンダリングする場合があるため、
- * `<p><strong>WPP_MARKER_N</strong></p>` 形式も検出して取り除く。
+ *
+ * 検出パターン（優先度順）:
+ *   A. `<!-- wp:paragraph --><p><strong>TOKEN</strong></p><!-- /wp:paragraph -->`
+ *      → marked が `__TOKEN__` をボールド解釈し、markdown.ts が wp:paragraph で包んだ場合
+ *   B. `<!-- wp:paragraph --><p>__TOKEN__</p><!-- /wp:paragraph -->`
+ *      → marked がボールド解釈しなかったが wp:paragraph で包まれた場合
+ *   C. `<p><strong>TOKEN</strong></p>` / `<p>__TOKEN__</p>`
+ *      → wp:paragraph 外（テストやインラインケース）
+ *   D. ベアトークン
+ *      → 上記いずれにもマッチしないフォールバック
+ *
+ * パターン A/B でブロックコメントごと置換することで、Gutenberg の入れ子ブロック
+ * （wp:paragraph の中に wp:embed 等を入れる構造）が出来てしまう不具合を防ぐ。
  */
 export function restoreMarkers(html: string, placeholders: Placeholder[]): string {
   let out = html;
   for (const ph of placeholders) {
-    // パターン 1: <p>__WPP_MARKER_N__</p>（そのままプレースホルダが段落に包まれた場合）
-    // test() ではなく replace() の戻り値と元文字列を比較することで RegExp.lastIndex 状態を意識せずに済ませる
-    const wrappedPlain = new RegExp(`<p>\\s*${escapeRegex(ph.token)}\\s*</p>`, 'g');
-    const afterPlain = out.replace(wrappedPlain, ph.block);
-    if (afterPlain !== out) {
-      out = afterPlain;
-      continue;
-    }
-    // パターン 2: <p><strong>WPP_MARKER_N</strong></p>
-    // marked が __ をボールド記法として解釈した場合
     const innerToken = ph.token.replace(/^__|__$/g, '');
-    const wrappedBold = new RegExp(
-      `<p>\\s*<strong>${escapeRegex(innerToken)}</strong>\\s*</p>`,
+    const tokenEsc = escapeRegex(ph.token);
+    const innerEsc = escapeRegex(innerToken);
+
+    // パターン A: wp:paragraph で包まれた <p><strong>TOKEN</strong></p>
+    const blockBold = new RegExp(
+      `<!-- wp:paragraph -->\\s*<p>\\s*<strong>${innerEsc}</strong>\\s*</p>\\s*<!-- /wp:paragraph -->`,
       'g',
     );
-    const afterBold = out.replace(wrappedBold, ph.block);
-    if (afterBold !== out) {
-      out = afterBold;
+    const afterBlockBold = out.replace(blockBold, ph.block);
+    if (afterBlockBold !== out) {
+      out = afterBlockBold;
       continue;
     }
+
+    // パターン B: wp:paragraph で包まれた <p>__TOKEN__</p>
+    const blockPlain = new RegExp(
+      `<!-- wp:paragraph -->\\s*<p>\\s*${tokenEsc}\\s*</p>\\s*<!-- /wp:paragraph -->`,
+      'g',
+    );
+    const afterBlockPlain = out.replace(blockPlain, ph.block);
+    if (afterBlockPlain !== out) {
+      out = afterBlockPlain;
+      continue;
+    }
+
+    // パターン C-1: 単独 <p><strong>TOKEN</strong></p>
+    const inlineBold = new RegExp(`<p>\\s*<strong>${innerEsc}</strong>\\s*</p>`, 'g');
+    const afterInlineBold = out.replace(inlineBold, ph.block);
+    if (afterInlineBold !== out) {
+      out = afterInlineBold;
+      continue;
+    }
+
+    // パターン C-2: 単独 <p>__TOKEN__</p>
+    const inlinePlain = new RegExp(`<p>\\s*${tokenEsc}\\s*</p>`, 'g');
+    const afterInlinePlain = out.replace(inlinePlain, ph.block);
+    if (afterInlinePlain !== out) {
+      out = afterInlinePlain;
+      continue;
+    }
+
+    // パターン D: ベアトークン
     out = out.split(ph.token).join(ph.block);
   }
   return out;
