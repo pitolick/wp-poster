@@ -126,6 +126,61 @@ Gutenberg のブロックバリデーションは寛容ではなく、`responsiv
 | `![alt](url)` 単独段落 | `core/image` |
 | 上記以外 | `core/html` フォールバック |
 
+## Markdown ドラフトファイルからの投稿
+
+frontmatter 付き Markdown ファイルを直接読んで投稿できます。
+
+```typescript
+import { readFileSync } from 'node:fs';
+import { WPPoster } from '@pitolick/wp-poster';
+import { parseDraft } from '@pitolick/wp-poster/draft';
+
+const md = readFileSync('drafts/2026-05-21-sale-test.md', 'utf8');
+const { input, errors, warnings } = parseDraft(md);
+if (errors.length > 0) {
+  console.error(errors);
+  process.exit(1);
+}
+if (warnings.length > 0) {
+  console.warn(warnings);
+}
+
+const poster = new WPPoster({ url, username, appPassword });
+await poster.publish({
+  ...input!,
+  markerTransformers: [affilicardMarker], // サイト固有マーカーは呼び出し側で注入
+});
+```
+
+### Draft の frontmatter スキーマ
+
+```yaml
+---
+# 必須
+title: 「テスト作品 A」が 50% OFF — 期間限定セール
+
+# オプション（PostInput と 1:1 対応）
+slug: sale-test-work-a-2026-05
+status: draft # draft / publish / future / pending / private
+date: 2026-05-21T19:00:00+09:00 # status='future' で予約投稿
+excerpt: 短い抜粋
+author: 1
+categories:
+  - 漫画
+tags:
+  - セール
+featuredImage:
+  source: https://example.com/cover.jpg
+  alt: 表紙
+meta:
+  rank_math_title: SEO タイトル
+---
+```
+
+未知のトップレベルキー（例: `source` のような orchestrator 用メタ）は `warnings` に乗りますが、`errors` にはなりません（PostInput から除外されるだけ）。
+
+`validateDraft(markdown)` は parse + 検証のみを行い、PostInput への変換は省略します。CI で frontmatter スキーマを軽量に確認したい場合に使えます。
+
 ## テスト
 
 ```bash

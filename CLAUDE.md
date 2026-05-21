@@ -22,6 +22,7 @@ Issue の起票・Claude Code GitHub Actions の起動は通常 **利用側の�
 | `src/images.ts` | 画像ダウンロード・リサイズ・アップロード |
 | `src/meta.ts` | Rank Math 等の SEO メタ設定 |
 | `src/cache-bust.ts` | （将来）キャッシュクリア API 呼出フック |
+| `src/draft/` (sub-export `@pitolick/wp-poster/draft`) | frontmatter 付き Markdown ドラフトの解析・検証・PostInput への変換 |
 
 ---
 
