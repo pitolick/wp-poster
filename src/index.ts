@@ -63,6 +63,7 @@ export class WPPoster {
     const payload: Record<string, unknown> = {};
 
     if (input.title !== undefined) payload.title = input.title;
+    if (input.slug !== undefined) payload.slug = input.slug;
     if (input.status !== undefined) payload.status = input.status;
     if (input.date !== undefined) payload.date = input.date;
     if (input.excerpt !== undefined) payload.excerpt = input.excerpt;

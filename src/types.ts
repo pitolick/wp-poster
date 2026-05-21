@@ -15,6 +15,8 @@ export interface PostInput {
   title: string;
   /** Markdown 文字列 */
   content: string;
+  /** WP の post_name（URL スラッグ）。未指定なら WP 側で title から自動生成 */
+  slug?: string;
   status?: 'draft' | 'publish' | 'future' | 'pending' | 'private';
   /** ISO 8601。status='future' のときに使用 */
   date?: string;
