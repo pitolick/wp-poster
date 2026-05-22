@@ -8,12 +8,16 @@ export class WPClient {
   private readonly auth: string;
   private readonly fetchFn: FetchFn;
   private readonly requestDelayMs: number;
+  private readonly createMissingCategories: boolean;
+  private readonly onMissingCategory?: (name: string) => void;
 
   constructor(config: WPPosterConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     this.auth = 'Basic ' + Buffer.from(`${config.username}:${config.appPassword}`).toString('base64');
     this.fetchFn = config.fetch ?? globalThis.fetch;
     this.requestDelayMs = config.requestDelayMs ?? 0;
+    this.createMissingCategories = config.createMissingCategories ?? true;
+    this.onMissingCategory = config.onMissingCategory;
     if (typeof this.fetchFn !== 'function') {
       throw new Error('global fetch is not available; pass `fetch` in WPPosterConfig');
     }
@@ -55,12 +59,17 @@ export class WPClient {
     names: string[],
   ): Promise<number[]> {
     const ids: number[] = [];
+    const isCategory = endpoint.endsWith('/categories');
     for (const name of names) {
       const search = encodeURIComponent(name);
       const found = await this.get<WPTerm[]>(`${endpoint}?search=${search}`);
       const exact = found.find((t) => t.name === name);
       if (exact) {
         ids.push(exact.id);
+        continue;
+      }
+      if (isCategory && !this.createMissingCategories) {
+        this.onMissingCategory?.(name);
         continue;
       }
       const created = await this.postJson<WPTerm>(endpoint, { name });
