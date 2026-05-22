@@ -17,6 +17,22 @@ export interface WPPosterConfig {
    * 引っかかり 503/メンテページが返ることがある。
    */
   requestDelayMs?: number;
+  /**
+   * カテゴリ解決時、検索で見つからないカテゴリ名を自動作成するかどうか。
+   * デフォルト `true` (後方互換)。
+   *
+   * `false` のとき、未存在のカテゴリ名はスキップされ（投稿の `categories` には付かない）、
+   * `onMissingCategory` が指定されていればその名前を渡して呼ばれる。
+   *
+   * Routine が新規カテゴリ名を frontmatter に書いてしまうのを安全側に倒したい運用
+   * （カテゴリ階層を勝手に汚さない）で使う。タグ (`resolveTagIds`) には影響しない。
+   */
+  createMissingCategories?: boolean;
+  /**
+   * `createMissingCategories: false` のときに未存在カテゴリ名を呼出側に通知する callback。
+   * wp-poster 内では console を呼ばないので、ロギングは呼出側が行う想定。
+   */
+  onMissingCategory?: (name: string) => void;
 }
 
 /** WPPoster.publish() / .update() に渡す投稿入力 */

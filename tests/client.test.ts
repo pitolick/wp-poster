@@ -196,6 +196,66 @@ describe('WPClient タグ・カテゴリ解決', () => {
     expect(ids).toEqual([5]);
   });
 
+  it('createMissingCategories: false で未存在カテゴリは作成せず skip し callback が呼ばれる', async () => {
+    const calls: { url: string; method: string }[] = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method ?? 'GET' });
+      if (url.includes('/categories?search=manga')) {
+        return new Response(JSON.stringify([{ id: 5, name: 'manga', slug: 'manga' }]), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      // 未存在カテゴリ "newcat" の検索は空配列
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    const missing: string[] = [];
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+      createMissingCategories: false,
+      onMissingCategory: (name) => missing.push(name),
+    });
+    const ids = await client.resolveCategoryIds(['manga', 'newcat']);
+    expect(ids).toEqual([5]); // newcat は skip され ID に含まれない
+    expect(missing).toEqual(['newcat']);
+    expect(calls.filter((c) => c.method === 'POST').length).toBe(0); // POST /categories は走らない
+  });
+
+  it('createMissingCategories: false でも resolveTagIds は通常通り新規作成する', async () => {
+    const calls: { url: string; method: string }[] = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method ?? 'GET' });
+      if (url.includes('/tags?search=bar') && init.method !== 'POST') {
+        return new Response(JSON.stringify([]), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.endsWith('/tags') && init.method === 'POST') {
+        return new Response(JSON.stringify({ id: 99, name: 'bar', slug: 'bar' }), {
+          status: 201, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    const missing: string[] = [];
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+      createMissingCategories: false,
+      onMissingCategory: (name) => missing.push(name),
+    });
+    const ids = await client.resolveTagIds(['bar']);
+    expect(ids).toEqual([99]); // タグはちゃんと作成される
+    expect(missing).toEqual([]); // onMissingCategory はタグでは呼ばれない
+    expect(calls.filter((c) => c.method === 'POST').length).toBe(1);
+  });
+
   it('resolveTagIds: 完全一致のみ既存扱い（部分一致は新規作成）', async () => {
     const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
       if (url.includes('/tags?search=ai') && init.method !== 'POST') {
