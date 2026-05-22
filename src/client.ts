@@ -7,11 +7,13 @@ export class WPClient {
   private readonly baseUrl: string;
   private readonly auth: string;
   private readonly fetchFn: FetchFn;
+  private readonly requestDelayMs: number;
 
   constructor(config: WPPosterConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     this.auth = 'Basic ' + Buffer.from(`${config.username}:${config.appPassword}`).toString('base64');
     this.fetchFn = config.fetch ?? globalThis.fetch;
+    this.requestDelayMs = config.requestDelayMs ?? 0;
     if (typeof this.fetchFn !== 'function') {
       throw new Error('global fetch is not available; pass `fetch` in WPPosterConfig');
     }
@@ -113,11 +115,21 @@ export class WPClient {
     const isJson = contentType.includes('application/json');
     const body = isJson ? await res.json() : await res.text();
 
+    // ホスティング側スロットルへの対策として、レスポンス受信後に指定ミリ秒だけ待つ。
+    // エラーパスでも次の呼出がすぐ走ると同じスロットルに引っかかるため、ok/!ok 双方で待つ。
+    if (this.requestDelayMs > 0) {
+      await delay(this.requestDelayMs);
+    }
+
     if (!res.ok) {
       throw new WPRequestError(`${res.status} ${res.statusText}`, res.status, body);
     }
     return body as T;
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
