@@ -8,6 +8,15 @@ export interface WPPosterConfig {
   appPassword: string;
   /** テスト等から差し替えるための fetch 実装。未指定なら globalThis.fetch */
   fetch?: typeof fetch;
+  /**
+   * 連続する REST 呼出のスロットル回避用に、各 HTTP リクエスト後に挿入する遅延 (ミリ秒)。
+   * `0` または未指定で無効。
+   *
+   * 短時間に大量の REST 呼出が走る運用 (タグ・カテゴリ解決 + 投稿 + メディアアップロード等)
+   * では、ホスティング側 / セキュリティプラグインの「単一ユーザーからの大量アクセス」検知に
+   * 引っかかり 503/メンテページが返ることがある。
+   */
+  requestDelayMs?: number;
 }
 
 /** WPPoster.publish() / .update() に渡す投稿入力 */

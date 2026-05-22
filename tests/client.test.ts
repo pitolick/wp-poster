@@ -65,6 +65,42 @@ describe('WPClient', () => {
     });
   });
 
+  it('requestDelayMs を指定すると各リクエスト後に setTimeout が呼ばれる', async () => {
+    vi.useFakeTimers();
+    const fetchMock = makeFetchOk({ ok: true });
+    const client = new WPClient({
+      url: 'https://example.com',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+      requestDelayMs: 500,
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const promise = client.get('/wp-json/wp/v2/posts/1');
+    // fetch のマイクロタスクを 1 回回してから setTimeout が積まれる
+    await vi.advanceTimersByTimeAsync(0);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
+    await vi.runAllTimersAsync();
+    await promise;
+    setTimeoutSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('requestDelayMs 未指定なら setTimeout は呼ばれない', async () => {
+    const fetchMock = makeFetchOk({ ok: true });
+    const client = new WPClient({
+      url: 'https://example.com',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    await client.get('/wp-json/wp/v2/posts/1');
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    setTimeoutSpy.mockRestore();
+  });
+
   it('URL の末尾スラッシュを正規化する', async () => {
     const fetchMock = makeFetchOk({ ok: true });
     const client = new WPClient({
