@@ -70,8 +70,23 @@ describe('validateFrontmatter', () => {
   });
 
   it('未知のトップレベルキーは warnings に乗る（errors にはならない）', () => {
-    const r = validateFrontmatter({ title: 't', source: { generator: 'claude-routine' } });
+    const r = validateFrontmatter({ title: 't', customField: { foo: 'bar' } });
     expect(r.ok).toBe(true);
-    expect(r.warnings).toContain('unknown frontmatter key: source');
+    expect(r.warnings).toContain('unknown frontmatter key: customField');
+  });
+
+  it('source は known key として扱われ warning を出さない（orchestrator 用トレースメタ）', () => {
+    const r = validateFrontmatter({
+      title: 't',
+      source: { generator: 'claude-routine', skill: 'e-comi-sale-check' },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.warnings).not.toContain('unknown frontmatter key: source');
+  });
+
+  it('source が object でなければ ok=false', () => {
+    const r = validateFrontmatter({ title: 't', source: 'claude-routine' });
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('source'))).toBe(true);
   });
 });

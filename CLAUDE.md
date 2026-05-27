@@ -24,6 +24,14 @@ Issue の起票・Claude Code GitHub Actions の起動は通常 **利用側の�
 | `src/cache-bust.ts` | （将来）キャッシュクリア API 呼出フック |
 | `src/draft/` (sub-export `@pitolick/wp-poster/draft`) | frontmatter 付き Markdown ドラフトの解析・検証・PostInput への変換 |
 
+### frontmatter 拡張キーの方針
+
+`DraftFrontmatter` は WP REST API に直接対応するフィールド（`title` / `categories` / `meta` 等）に加えて、`source?: Record<string, unknown>` という **orchestrator 用トレースメタ** 専用キーを 1 つだけ許容する。
+
+- `source` は wp-poster では値を一切解釈せず、`adaptToPostInput` で `PostInput` から除外する（= WP には送らない）
+- 用途: 呼び出し側（Claude Routine 等）が「どのスキル・生成器でこのドラフトを作ったか」を frontmatter に残せるようにする
+- それ以外の未知トップレベルキーは `warnings` に乗る（実害なしの検知ノイズ抑止のため、`source` だけ known key に追加した経緯）
+
 ---
 
 ## 技術スタック

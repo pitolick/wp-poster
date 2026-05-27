@@ -39,15 +39,31 @@ status: draft
   it('未知のキーは warnings に乗るが input は返る', () => {
     const md = `---
 title: タイトル
-source:
-  generator: claude-routine
+customField:
+  foo: bar
 ---
 
 本文`;
     const result = parseDraft(md);
     expect(result.input).not.toBeNull();
-    expect(result.warnings).toContain('unknown frontmatter key: source');
+    expect(result.warnings).toContain('unknown frontmatter key: customField');
     expect(result.errors).toEqual([]);
+  });
+
+  it('source キー（orchestrator 用トレースメタ）は warnings を出さず、PostInput にも含めない', () => {
+    const md = `---
+title: タイトル
+source:
+  generator: claude-routine
+  skill: e-comi-sale-check
+---
+
+本文`;
+    const result = parseDraft(md);
+    expect(result.input).not.toBeNull();
+    expect(result.warnings).not.toContain('unknown frontmatter key: source');
+    expect(result.errors).toEqual([]);
+    expect(result.input).not.toHaveProperty('source');
   });
 
   it('壊れた YAML は errors に乗り input=null', () => {

@@ -174,10 +174,15 @@ featuredImage:
   alt: 表紙
 meta:
   rank_math_title: SEO タイトル
+
+# オプション（orchestrator 用トレースメタ。wp-poster は解釈せず WP にも送らない）
+source:
+  generator: claude-routine
+  skill: e-comi-sale-check
 ---
 ```
 
-未知のトップレベルキー（例: `source` のような orchestrator 用メタ）は `warnings` に乗りますが、`errors` にはなりません（PostInput から除外されるだけ）。
+`source` は orchestrator がドラフト生成元を追跡するための拡張キーで、`Record<string, unknown>` として任意の構造を受け入れます。値は wp-poster では一切解釈せず、`PostInput` にも含めないため WP REST API には送信されません（warning も出ません）。それ以外の未知のトップレベルキーは `warnings` に乗りますが、`errors` にはなりません（PostInput からも除外されます）。
 
 `validateDraft(markdown)` は parse + 検証のみを行い、PostInput への変換は省略します。CI で frontmatter スキーマを軽量に確認したい場合に使えます。
 

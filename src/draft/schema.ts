@@ -9,6 +9,7 @@ const KNOWN_KEYS = new Set([
   'tags',
   'featuredImage',
   'meta',
+  'source',
 ]);
 
 const STATUSES = new Set(['draft', 'publish', 'future', 'pending', 'private']);
@@ -31,6 +32,12 @@ export interface DraftFrontmatter {
   tags?: string[];
   featuredImage?: DraftFeaturedImage | null;
   meta?: Record<string, string | number | boolean>;
+  /**
+   * orchestrator がドラフト生成元を追跡するためのトレースメタ。
+   * wp-poster は値を解釈せず、WP REST API にも送信しない（adapter で除外）。
+   * 例: `source: { generator: 'claude-routine', skill: 'e-comi-sale-check' }`
+   */
+  source?: Record<string, unknown>;
 }
 
 export interface ValidationResult {
@@ -99,6 +106,13 @@ export function validateFrontmatter(input: unknown): ValidationResult {
           errors.push(`featuredImage.${k} must be a string if specified`);
         }
       }
+    }
+  }
+
+  // source (orchestrator 用トレースメタ、wp-poster は解釈しない)
+  if (obj.source !== undefined) {
+    if (typeof obj.source !== 'object' || obj.source === null || Array.isArray(obj.source)) {
+      errors.push('source must be an object if specified');
     }
   }
 

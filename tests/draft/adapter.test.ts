@@ -49,4 +49,14 @@ describe('adaptToPostInput', () => {
     expect(input).not.toHaveProperty('date');
     expect(input).not.toHaveProperty('categories');
   });
+
+  it('source キーは PostInput に含めない（orchestrator 用トレースメタ、WP には送らない）', () => {
+    const fm: DraftFrontmatter = {
+      title: 't',
+      source: { generator: 'claude-routine', skill: 'e-comi-sale-check' },
+    };
+    const input = adaptToPostInput(fm, '本文');
+    expect(input).not.toHaveProperty('source');
+    expect(input).toEqual({ title: 't', content: '本文' });
+  });
 });
