@@ -333,3 +333,55 @@ describe('buildContentDisposition', () => {
     expect(result).toContain(encodeURIComponent('表紙.jpg'));
   });
 });
+
+function clientWithFetch(fetchImpl: typeof fetch) {
+  return new WPClient({ url: 'https://wp.example', username: 'u', appPassword: 'p', fetch: fetchImpl });
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+describe('WPClient rest_base 汎用化', () => {
+  it('findBySlug は status=any 付きで検索し、最初の id を返す', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([{ id: 42 }]));
+    const client = clientWithFetch(fetchMock as unknown as typeof fetch);
+
+    const found = await client.findBySlug('affilicard_product', 'dmm-books-b950rshes00197');
+
+    expect(found).toEqual({ id: 42 });
+    const calledUrl = (fetchMock.mock.calls[0][0] as string);
+    expect(calledUrl).toContain('/wp-json/wp/v2/affilicard_product');
+    expect(calledUrl).toContain('slug=dmm-books-b950rshes00197');
+    expect(calledUrl).toContain('status=any');
+  });
+
+  it('findBySlug は一致なしで null を返す', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+    const client = clientWithFetch(fetchMock as unknown as typeof fetch);
+    expect(await client.findBySlug('posts', 'no-such')).toBeNull();
+  });
+
+  it('createAt は rest_base 直下に POST する', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 7, link: 'https://wp.example/?p=7' }));
+    const client = clientWithFetch(fetchMock as unknown as typeof fetch);
+
+    const res = await client.createAt('affilicard_product', { title: 'X' });
+
+    expect(res.id).toBe(7);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://wp.example/wp-json/wp/v2/affilicard_product');
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
+  });
+
+  it('updateAt は rest_base/{id} に POST する', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 7 }));
+    const client = clientWithFetch(fetchMock as unknown as typeof fetch);
+
+    await client.updateAt('affilicard_product', 7, { title: 'Y' });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://wp.example/wp-json/wp/v2/affilicard_product/7');
+  });
+});
