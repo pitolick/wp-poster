@@ -23,3 +23,16 @@ describe('buildMetaPayload', () => {
     expect(out).toEqual({ rank_math_focus_keyword: 'kw', _custom_flag: true, _count: 3 });
   });
 });
+
+describe('buildMetaPayload 配列メタ', () => {
+  it('オブジェクト配列の meta 値をそのまま通す', () => {
+    const listings = [{ platform: 'dmm-books', external_id: 'b950rshes00197', price: '100' }];
+    const out = buildMetaPayload({ affilicard_listings: listings });
+    expect(out.affilicard_listings).toEqual(listings);
+  });
+
+  it('undefined の値は除去する', () => {
+    const out = buildMetaPayload({ a: 'x', b: undefined });
+    expect(out).toEqual({ a: 'x' });
+  });
+});

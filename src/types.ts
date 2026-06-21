@@ -70,13 +70,13 @@ export interface ImageInput {
   caption?: string;
 }
 
-/** Rank Math 等の SEO メタ */
+/** Rank Math 等の SEO メタ + 任意の post meta（配列/オブジェクトも可） */
 export interface PostMeta {
   rank_math_title?: string;
   rank_math_description?: string;
   rank_math_focus_keyword?: string;
-  /** その他任意の post meta */
-  [key: string]: string | number | boolean | undefined;
+  /** その他任意の post meta（CPT の配列メタ等を含む） */
+  [key: string]: unknown;
 }
 
 /** マーカートランスフォーマー: Markdown 内の特定パターンを Gutenberg ブロック HTML に置換 */
