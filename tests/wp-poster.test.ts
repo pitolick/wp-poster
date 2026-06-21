@@ -207,3 +207,58 @@ describe('WPPoster.update', () => {
     expect((post!.body as { status: string }).status).toBe('publish');
   });
 });
+
+describe('WPPoster.upsertBySlug', () => {
+  const base = { url: 'https://wp.example', username: 'u', appPassword: 'p' };
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  }
+
+  it('slug 不一致なら create する（created=true）', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([])) // findBySlug → なし
+      .mockResolvedValueOnce(jsonResponse({ id: 11, link: 'https://wp.example/?p=11' })); // createAt
+    const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+
+    const res = await poster.upsertBySlug('affilicard_product', {
+      title: '来世ではちゃんとします 1巻',
+      content: '',
+      slug: 'dmm-books-b950rshes00197',
+      status: 'publish',
+      meta: { affilicard_listings: [{ platform: 'dmm-books', external_id: 'b950rshes00197' }] },
+    });
+
+    expect(res).toEqual({ id: 11, created: true, link: 'https://wp.example/?p=11' });
+    expect(fetchMock.mock.calls[1][0]).toBe('https://wp.example/wp-json/wp/v2/affilicard_product');
+  });
+
+  it('slug 一致なら id 指定 update し、payload に slug を含めない（created=false）', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([{ id: 99 }])) // findBySlug → あり
+      .mockResolvedValueOnce(jsonResponse({ id: 99 })); // updateAt
+    const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+
+    const res = await poster.upsertBySlug('affilicard_product', {
+      title: 'X',
+      content: '',
+      slug: 'dmm-books-b950rshes00197',
+      status: 'publish',
+    });
+
+    expect(res.created).toBe(false);
+    expect(res.id).toBe(99);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://wp.example/wp-json/wp/v2/affilicard_product/99');
+    const sentBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
+    expect(sentBody.slug).toBeUndefined(); // 更新時は slug を再送しない
+  });
+
+  it('slug 未指定はエラー', async () => {
+    const poster = new WPPoster({ ...base, fetch: vi.fn() as unknown as typeof fetch });
+    await expect(
+      poster.upsertBySlug('posts', { title: 'X', content: '' }),
+    ).rejects.toThrow(/slug/);
+  });
+});
