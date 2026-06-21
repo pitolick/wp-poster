@@ -55,6 +55,7 @@ export function validateDraft(markdown: string): { ok: boolean; errors: string[]
 /**
  * frontmatter を PostInput へ変換せずに素のまま返す。
  * `parseDraft` が落とす未知キー（例: `products`）を保持したい呼び出し側向け。
+ * 本文 (`body`) は gray-matter の生の content を trim せず返す（parseDraft は trim する点と異なる）。
  */
 export function readFrontmatter(markdown: string): {
   frontmatter: Record<string, unknown>;

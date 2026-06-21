@@ -357,6 +357,7 @@ describe('WPClient rest_base 汎用化', () => {
     expect(calledUrl).toContain('/wp-json/wp/v2/affilicard_product');
     expect(calledUrl).toContain('slug=dmm-books-b950rshes00197');
     expect(calledUrl).toContain('status=any');
+    expect(calledUrl).toContain('per_page=1');
   });
 
   it('findBySlug は一致なしで null を返す', async () => {

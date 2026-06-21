@@ -238,7 +238,7 @@ describe('WPPoster.upsertBySlug', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse([{ id: 99 }])) // findBySlug → あり
-      .mockResolvedValueOnce(jsonResponse({ id: 99 })); // updateAt
+      .mockResolvedValueOnce(jsonResponse({ id: 99, link: 'https://wp.example/?p=99' })); // updateAt
     const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
 
     const res = await poster.upsertBySlug('affilicard_product', {
@@ -250,6 +250,7 @@ describe('WPPoster.upsertBySlug', () => {
 
     expect(res.created).toBe(false);
     expect(res.id).toBe(99);
+    expect(res.link).toBe('https://wp.example/?p=99');
     expect(fetchMock.mock.calls[1][0]).toBe('https://wp.example/wp-json/wp/v2/affilicard_product/99');
     const sentBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
     expect(sentBody.slug).toBeUndefined(); // 更新時は slug を再送しない

@@ -35,4 +35,9 @@ describe('buildMetaPayload 配列メタ', () => {
     const out = buildMetaPayload({ a: 'x', b: undefined });
     expect(out).toEqual({ a: 'x' });
   });
+
+  it('null の値は通す（undefined のみ除去）', () => {
+    const out = buildMetaPayload({ a: null });
+    expect(out).toEqual({ a: null });
+  });
 });
