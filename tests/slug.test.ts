@@ -20,4 +20,8 @@ describe('sanitizeSlug', () => {
     const once = sanitizeSlug('Foo / Bar');
     expect(sanitizeSlug(once)).toBe(once);
   });
+
+  it('アクセント・ダイアクリティカルを除去する', () => {
+    expect(sanitizeSlug('Café Crème')).toBe('cafe-creme');
+  });
 });

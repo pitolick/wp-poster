@@ -262,4 +262,19 @@ describe('WPPoster.upsertBySlug', () => {
       poster.upsertBySlug('posts', { title: 'X', content: '' }),
     ).rejects.toThrow(/slug/);
   });
+
+  it('非正規化 slug でも正規化後の slug で検索し update 経路を取る', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([{ id: 77 }])) // findBySlug → あり
+      .mockResolvedValueOnce(jsonResponse({ id: 77, link: 'https://wp.example/?p=77' }));
+    const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+
+    const res = await poster.upsertBySlug('posts', { title: 'X', content: '', slug: 'Foo / Bar', status: 'draft' });
+
+    expect(res.created).toBe(false);
+    expect(res.id).toBe(77);
+    const findUrl = fetchMock.mock.calls[0][0] as string;
+    expect(findUrl).toContain('slug=foo-bar'); // 正規化後の slug で検索している
+  });
 });

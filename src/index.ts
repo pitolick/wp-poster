@@ -6,6 +6,7 @@ import type { CacheBustHook } from './cache-bust.js';
 import { noopCacheBust } from './cache-bust.js';
 import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
 import { WPPosterError } from './errors.js';
+import { sanitizeSlug } from './slug.js';
 
 export const WP_POSTER_VERSION = '0.2.0';
 
@@ -76,8 +77,12 @@ export class WPPoster {
     if (!input.slug) {
       throw new WPPosterError('upsertBySlug requires input.slug');
     }
-    const existing = await this.client.findBySlug(postType, input.slug);
-    const payload = await this.buildPayload(input, options);
+    const slug = sanitizeSlug(input.slug);
+    if (!slug) {
+      throw new WPPosterError('upsertBySlug requires a non-empty slug after normalization');
+    }
+    const existing = await this.client.findBySlug(postType, slug);
+    const payload = await this.buildPayload({ ...input, slug }, options);
 
     let post: WPPostResponse;
     let created: boolean;
