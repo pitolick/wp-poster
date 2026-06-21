@@ -26,11 +26,12 @@ Issue の起票・Claude Code GitHub Actions の起動は通常 **利用側の�
 
 ### frontmatter 拡張キーの方針
 
-`DraftFrontmatter` は WP REST API に直接対応するフィールド（`title` / `categories` / `meta` 等）に加えて、`source?: Record<string, unknown>` という **orchestrator 用トレースメタ** 専用キーを 1 つだけ許容する。
+`DraftFrontmatter` は WP REST API に直接対応するフィールド（`title` / `categories` / `meta` 等）に加えて、`source?: Record<string, unknown>` という **orchestrator 用トレースメタ** 専用キーを許容する。
 
 - `source` は wp-poster では値を一切解釈せず、`adaptToPostInput` で `PostInput` から除外する（= WP には送らない）
 - 用途: 呼び出し側（Claude Routine 等）が「どのスキル・生成器でこのドラフトを作ったか」を frontmatter に残せるようにする
-- それ以外の未知トップレベルキーは `warnings` に乗る（実害なしの検知ノイズ抑止のため、`source` だけ known key に追加した経緯）
+- それ以外の未知トップレベルキーは `warnings` に乗る（実害なしの検知ノイズ）
+- **サイト固有の拡張キーは wp-poster にハードコードしない**。利用側が独自に解釈する frontmatter キー（例: e-comi の `products`）の警告を抑止したい場合は、`parseDraft(md, { extraKnownKeys: ['products'] })` / `validateFrontmatter(input, { extraKnownKeys })` で**呼び出し側が宣言する**（`ValidateOptions`）。wp-poster は値を解釈せず警告だけ抑止する。これにより「source だけ特別扱い」の固有性を増やさず汎用性を保つ
 
 ---
 

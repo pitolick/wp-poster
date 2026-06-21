@@ -46,7 +46,22 @@ export interface ValidationResult {
   warnings: string[];
 }
 
-export function validateFrontmatter(input: unknown): ValidationResult {
+/**
+ * `validateFrontmatter` / `parseDraft` の挙動を呼び出し側から拡張するオプション。
+ */
+export interface ValidateOptions {
+  /**
+   * KNOWN_KEYS に加えて「未知キー警告を出さない」追加トップレベルキー。
+   * orchestrator 固有の frontmatter 拡張（例: 利用側が独自に解釈する `products`）を、
+   * wp-poster 本体にハードコードせず呼び出し側が宣言できるようにする。値は解釈しない。
+   */
+  extraKnownKeys?: readonly string[];
+}
+
+export function validateFrontmatter(
+  input: unknown,
+  options: ValidateOptions = {},
+): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -130,9 +145,10 @@ export function validateFrontmatter(input: unknown): ValidationResult {
     }
   }
 
-  // Unknown top-level keys → warnings
+  // Unknown top-level keys → warnings（呼び出し側が宣言した extraKnownKeys は除外）
+  const extraKnownKeys = options.extraKnownKeys ?? [];
   for (const k of Object.keys(obj)) {
-    if (!KNOWN_KEYS.has(k)) {
+    if (!KNOWN_KEYS.has(k) && !extraKnownKeys.includes(k)) {
       warnings.push(`unknown frontmatter key: ${k}`);
     }
   }
