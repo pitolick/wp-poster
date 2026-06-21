@@ -46,12 +46,26 @@ export class WPClient {
     return this.request<T>('POST', path, init);
   }
 
+  async findBySlug(restBase: string, slug: string): Promise<{ id: number } | null> {
+    const q = `slug=${encodeURIComponent(slug)}&status=any&per_page=1`;
+    const found = await this.get<Array<{ id: number }>>(`/wp-json/wp/v2/${restBase}?${q}`);
+    return found.length > 0 ? { id: found[0].id } : null;
+  }
+
+  async createAt(restBase: string, payload: Record<string, unknown>): Promise<WPPostResponse> {
+    return this.postJson<WPPostResponse>(`/wp-json/wp/v2/${restBase}`, payload);
+  }
+
+  async updateAt(restBase: string, id: number, payload: Record<string, unknown>): Promise<WPPostResponse> {
+    return this.postJson<WPPostResponse>(`/wp-json/wp/v2/${restBase}/${id}`, payload);
+  }
+
   async createPost(payload: Record<string, unknown>): Promise<WPPostResponse> {
-    return this.postJson<WPPostResponse>('/wp-json/wp/v2/posts', payload);
+    return this.createAt('posts', payload);
   }
 
   async updatePost(id: number, payload: Record<string, unknown>): Promise<WPPostResponse> {
-    return this.postJson<WPPostResponse>(`/wp-json/wp/v2/posts/${id}`, payload);
+    return this.updateAt('posts', id, payload);
   }
 
   private async resolveTermIds(

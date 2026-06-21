@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDraft, validateDraft } from '../../src/draft/index.js';
+import { parseDraft, validateDraft, readFrontmatter } from '../../src/draft/index.js';
 
 const validMd = `---
 title: テスト記事
@@ -98,5 +98,30 @@ status: draft
   it('壊れた YAML は ok=false', () => {
     const result = validateDraft('---\nbad: [yaml\n---\n本文');
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('readFrontmatter', () => {
+  it('未知キー（products）を含む frontmatter と本文を返す', () => {
+    const md = [
+      '---',
+      'title: T',
+      'slug: s',
+      'products:',
+      '  - title: P1',
+      '    listings:',
+      '      - platform: dmm-books',
+      '        external_id: b950rshes00197',
+      '---',
+      '本文 [affilicard platform="dmm-books" external-id="b950rshes00197"]',
+      '',
+    ].join('\n');
+
+    const { frontmatter, body } = readFrontmatter(md);
+
+    expect(frontmatter.title).toBe('T');
+    expect(Array.isArray(frontmatter.products)).toBe(true);
+    expect((frontmatter.products as Array<{ title: string }>)[0].title).toBe('P1');
+    expect(body).toContain('[affilicard platform="dmm-books" external-id="b950rshes00197"]');
   });
 });

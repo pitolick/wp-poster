@@ -1,7 +1,13 @@
+import matter from 'gray-matter';
 import type { PostInput } from '../types.js';
 import { parseFrontmatter } from './parser.js';
 import { validateFrontmatter, type DraftFrontmatter } from './schema.js';
 import { adaptToPostInput } from './adapter.js';
+
+export interface ReadFrontmatterResult {
+  frontmatter: Record<string, unknown>;
+  body: string;
+}
 
 export interface ParseDraftResult {
   /** 検証成功時のみ非 null。失敗時は null。 */
@@ -49,6 +55,16 @@ export function validateDraft(markdown: string): { ok: boolean; errors: string[]
   }
   const { ok, errors } = validateFrontmatter(frontmatter);
   return { ok, errors };
+}
+
+/**
+ * frontmatter を PostInput へ変換せずに素のまま返す。
+ * `parseDraft` が落とす未知キー（例: `products`）を保持したい呼び出し側向け。
+ * 本文 (`body`) は gray-matter の生の content を trim せず返す（parseDraft は trim する点と異なる）。
+ */
+export function readFrontmatter(markdown: string): ReadFrontmatterResult {
+  const { data, content } = matter(markdown);
+  return { frontmatter: (data ?? {}) as Record<string, unknown>, body: content };
 }
 
 // 再エクスポート（呼び出し側の利便性）

@@ -5,8 +5,10 @@ import { buildMetaPayload } from './meta.js';
 import type { CacheBustHook } from './cache-bust.js';
 import { noopCacheBust } from './cache-bust.js';
 import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
+import { WPPosterError } from './errors.js';
+import { sanitizeSlug } from './slug.js';
 
-export const WP_POSTER_VERSION = '0.1.0';
+export const WP_POSTER_VERSION = '0.2.0';
 
 export type {
   PostInput,
@@ -24,11 +26,18 @@ export { markdownToBlocks } from './markdown.js';
 export { extractMarkers, restoreMarkers } from './transformers.js';
 export { downloadImage, uploadFeaturedImage } from './images.js';
 export type { CacheBustHook } from './cache-bust.js';
+export { sanitizeSlug } from './slug.js';
 
 export interface PublishOptions {
   cacheBust?: CacheBustHook;
   /** featuredImage ダウンロード時に使う fetch（未指定なら設定の fetch） */
   fetch?: typeof fetch;
+}
+
+export interface UpsertResult {
+  id: number;
+  created: boolean;
+  link?: string;
 }
 
 export class WPPoster {
@@ -54,6 +63,39 @@ export class WPPoster {
     const post = await this.client.updatePost(id, payload);
     await (options.cacheBust ?? noopCacheBust)(post);
     return post;
+  }
+
+  /**
+   * slug を自然キーに upsert する。slug 一致で update（slug は再送しない）、
+   * 無ければ create。記事(`posts`)・CPT(`affilicard_product` 等)を共通で扱う。
+   */
+  async upsertBySlug(
+    postType: string,
+    input: PostInput,
+    options: PublishOptions = {},
+  ): Promise<UpsertResult> {
+    if (!input.slug) {
+      throw new WPPosterError('upsertBySlug requires input.slug');
+    }
+    const slug = sanitizeSlug(input.slug);
+    if (!slug) {
+      throw new WPPosterError('upsertBySlug requires a non-empty slug after normalization');
+    }
+    const existing = await this.client.findBySlug(postType, slug);
+    const payload = await this.buildPayload({ ...input, slug }, options);
+
+    let post: WPPostResponse;
+    let created: boolean;
+    if (existing) {
+      delete payload.slug; // wp_unique_post_slug の `-2` 付与を誘発させない
+      post = await this.client.updateAt(postType, existing.id, payload);
+      created = false;
+    } else {
+      post = await this.client.createAt(postType, payload);
+      created = true;
+    }
+    await (options.cacheBust ?? noopCacheBust)(post);
+    return { id: post.id, created, link: post.link };
   }
 
   private async buildPayload(
