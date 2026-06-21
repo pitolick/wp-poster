@@ -89,4 +89,17 @@ describe('validateFrontmatter', () => {
     expect(r.ok).toBe(false);
     expect(r.errors.some((e) => e.includes('source'))).toBe(true);
   });
+
+  it('extraKnownKeys に含めた未知キーは warning を出さない（呼び出し側拡張）', () => {
+    const withOpt = validateFrontmatter(
+      { title: 't', products: [{ title: 'P' }] },
+      { extraKnownKeys: ['products'] },
+    );
+    expect(withOpt.warnings).not.toContain('unknown frontmatter key: products');
+  });
+
+  it('extraKnownKeys を渡さなければ未知キーは従来どおり warning に乗る', () => {
+    const withoutOpt = validateFrontmatter({ title: 't', products: [{ title: 'P' }] });
+    expect(withoutOpt.warnings).toContain('unknown frontmatter key: products');
+  });
 });
