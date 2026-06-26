@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { downloadImage, uploadFeaturedImage } from '../src/images.js';
 import { WPClient } from '../src/client.js';
+import { WPPosterError } from '../src/errors.js';
 
 describe('downloadImage', () => {
   it('URL から画像をダウンロードし mimeType / filename を返す', async () => {
@@ -81,5 +82,35 @@ describe('uploadFeaturedImage', () => {
     expect(id).toBe(555);
     expect(calls.some((c) => c.url === 'https://example.com/cover.jpg')).toBe(true);
     expect(calls.some((c) => c.url.endsWith('/wp/v2/media'))).toBe(true);
+  });
+
+  it('data 指定時は DL せず直接 uploadMedia する', async () => {
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push(url);
+      if (url.includes('/wp/v2/media')) {
+        return new Response(
+          JSON.stringify({ id: 777, source_url: 'https://wp/y.jpg', media_type: 'image' }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('not handled', { status: 500 });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({ url: 'https://wp', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const id = await uploadFeaturedImage(client, {
+      data: new Uint8Array([9, 9, 9]),
+      mimeType: 'image/jpeg',
+      filename: 'thumb.jpg',
+    });
+
+    expect(id).toBe(777);
+    // DL 用 GET は一切呼ばれない（media POST のみ）
+    expect(calls.every((c) => c.includes('/wp/v2/media'))).toBe(true);
+  });
+
+  it('source も data も無ければ WPPosterError', async () => {
+    const client = new WPClient({ url: 'https://wp', username: 'u', appPassword: 'p' });
+    await expect(uploadFeaturedImage(client, { alt: 'x' })).rejects.toThrow(/source.*data|data.*source/);
   });
 });

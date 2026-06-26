@@ -60,11 +60,15 @@ export interface PostInput {
   markerTransformers?: MarkerTransformer[];
 }
 
-/** 画像入力 */
+/** 画像入力（source か data のいずれか一方を指定） */
 export interface ImageInput {
-  /** 画像のソース URL（HTTPS） */
-  source: string;
-  /** WP 上のファイル名（拡張子込み）。未指定なら URL から推定 */
+  /** 画像のソース URL（HTTPS）。data と排他 */
+  source?: string;
+  /** 生成済み画像の raw バイト列。source と排他 */
+  data?: Uint8Array;
+  /** data 指定時の MIME（例 image/jpeg）。未指定なら application/octet-stream */
+  mimeType?: string;
+  /** WP 上のファイル名（拡張子込み）。未指定なら URL/MIME から推定 */
   filename?: string;
   alt?: string;
   caption?: string;

@@ -66,12 +66,27 @@ export async function uploadFeaturedImage(
   image: ImageInput,
   options: DownloadOptions = {},
 ): Promise<number> {
-  const downloaded = await downloadImage(image.source, options);
-  const filename = image.filename ?? downloaded.filename;
+  let data: Uint8Array;
+  let mimeType: string;
+  let filename: string;
+
+  if (image.data) {
+    data = image.data;
+    mimeType = image.mimeType ?? 'application/octet-stream';
+    filename = image.filename ?? `upload.${EXT_FROM_MIME[mimeType] ?? 'bin'}`;
+  } else if (image.source) {
+    const downloaded = await downloadImage(image.source, options);
+    data = downloaded.data;
+    mimeType = downloaded.mimeType;
+    filename = image.filename ?? downloaded.filename;
+  } else {
+    throw new WPPosterError('ImageInput には source か data のいずれかが必要です');
+  }
+
   const media = await client.uploadMedia({
-    data: downloaded.data,
+    data,
     filename,
-    mimeType: downloaded.mimeType,
+    mimeType,
     alt: image.alt,
     caption: image.caption,
   });
