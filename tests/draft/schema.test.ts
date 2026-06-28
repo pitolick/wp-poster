@@ -42,6 +42,23 @@ describe('validateFrontmatter', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('author が整数なら ok=true', () => {
+    const r = validateFrontmatter({ title: 't', author: 3 });
+    expect(r.ok).toBe(true);
+  });
+
+  it('author が float なら ok=false（WP REST はユーザー ID＝整数のみ）', () => {
+    const r = validateFrontmatter({ title: 't', author: 1.5 });
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('author'))).toBe(true);
+  });
+
+  it('slug が空文字列なら ok=false（既存 slug の消去事故防止）', () => {
+    const r = validateFrontmatter({ title: 't', slug: '' });
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.includes('slug'))).toBe(true);
+  });
+
   it('categories が string[] でなければ ok=false', () => {
     const r = validateFrontmatter({ title: 't', categories: 'manga' });
     expect(r.ok).toBe(false);

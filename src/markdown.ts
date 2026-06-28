@@ -48,9 +48,11 @@ function renderParagraph(t: Tokens.Paragraph): string {
   // 単独の画像トークンだけの段落は core/image に変換
   if (t.tokens && t.tokens.length === 1 && t.tokens[0].type === 'image') {
     const img = t.tokens[0] as Tokens.Image;
+    // href / alt は属性値なので必ずエスケープする（alt に " や < を含む日本語ドラフトで
+    // 属性が破断し Gutenberg がブロックを無効化するのを防ぐ）。
     return wrapBlock(
       'image',
-      `<figure class="wp-block-image"><img src="${img.href}" alt="${img.text ?? ''}"/></figure>`,
+      `<figure class="wp-block-image"><img src="${escapeHtml(img.href)}" alt="${escapeHtml(img.text ?? '')}"/></figure>`,
     );
   }
   const inline = renderInlineText(t.text);

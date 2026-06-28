@@ -89,4 +89,29 @@ title: x
     const { content } = parseFrontmatter(md);
     expect(content).toBe('body with surrounding whitespace');
   });
+
+  it('引用符なし日付（YAML timestamp）を ISO8601 文字列へ正規化する', () => {
+    const md = `---
+title: x
+date: 2026-05-21
+---
+
+body`;
+    const { frontmatter } = parseFrontmatter(md);
+    expect(typeof frontmatter.date).toBe('string');
+    expect(frontmatter.date).toMatch(/^2026-05-21T/);
+  });
+
+  it('ネストした引用符なし日付も文字列へ正規化する', () => {
+    const md = `---
+title: x
+source:
+  generated_at: 2026-05-21T10:00:00.000Z
+---
+
+body`;
+    const { frontmatter } = parseFrontmatter(md);
+    const source = frontmatter.source as Record<string, unknown>;
+    expect(typeof source.generated_at).toBe('string');
+  });
 });

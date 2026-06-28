@@ -66,6 +66,13 @@ describe('markdownToBlocks: 複合ブロック', () => {
     expect(out).toContain('<!-- wp:image -->');
     expect(out).toContain('<img src="https://example.com/x.jpg" alt="alt"');
   });
+
+  it('画像の alt に含まれる " < & をエスケープして属性破断を防ぐ', () => {
+    const out = markdownToBlocks('![A "B" <C> & D](https://example.com/x.jpg)');
+    expect(out).toContain('alt="A &quot;B&quot; &lt;C&gt; &amp; D"');
+    // 生の二重引用符が alt 属性内に漏れていない
+    expect(out).not.toContain('alt="A "B"');
+  });
 });
 
 const affilicardMarker: MarkerTransformer = {
