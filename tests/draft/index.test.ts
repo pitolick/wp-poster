@@ -99,6 +99,18 @@ status: draft
     const result = validateDraft('---\nbad: [yaml\n---\n本文');
     expect(result.ok).toBe(false);
   });
+
+  it('未知キーの warnings を返す（検証用途で警告を受け取れる）', () => {
+    const md = `---
+title: t
+customField: x
+---
+
+本文`;
+    const result = validateDraft(md);
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toContain('unknown frontmatter key: customField');
+  });
 });
 
 describe('readFrontmatter', () => {

@@ -75,10 +75,10 @@ export function validateFrontmatter(
     errors.push('title is required and must be a non-empty string');
   }
 
-  // optional string fields
+  // optional string fields（空文字列も不可。空 slug は既存投稿の slug を消す等の事故になる）
   for (const key of ['slug', 'date', 'excerpt'] as const) {
-    if (obj[key] !== undefined && typeof obj[key] !== 'string') {
-      errors.push(`${key} must be a string if specified`);
+    if (obj[key] !== undefined && (typeof obj[key] !== 'string' || obj[key].length === 0)) {
+      errors.push(`${key} must be a non-empty string if specified`);
     }
   }
 
@@ -91,9 +91,9 @@ export function validateFrontmatter(
     }
   }
 
-  // author
-  if (obj.author !== undefined && typeof obj.author !== 'number') {
-    errors.push('author must be a number if specified');
+  // author（WP REST はユーザー ID＝整数のみ受理。float は 400 になる）
+  if (obj.author !== undefined && !Number.isInteger(obj.author)) {
+    errors.push('author must be an integer if specified');
   }
 
   // categories / tags

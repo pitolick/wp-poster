@@ -48,16 +48,16 @@ export function parseDraft(markdown: string, options: ValidateOptions = {}): Par
 export function validateDraft(
   markdown: string,
   options: ValidateOptions = {},
-): { ok: boolean; errors: string[] } {
+): { ok: boolean; errors: string[]; warnings: string[] } {
   let frontmatter: Record<string, unknown>;
   try {
     frontmatter = parseFrontmatter(markdown).frontmatter;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, errors: [`frontmatter parse error: ${msg}`] };
+    return { ok: false, errors: [`frontmatter parse error: ${msg}`], warnings: [] };
   }
-  const { ok, errors } = validateFrontmatter(frontmatter, options);
-  return { ok, errors };
+  const { ok, errors, warnings } = validateFrontmatter(frontmatter, options);
+  return { ok, errors, warnings };
 }
 
 /**
