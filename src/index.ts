@@ -27,6 +27,7 @@ export { extractMarkers, restoreMarkers } from './transformers.js';
 export { downloadImage, uploadFeaturedImage } from './images.js';
 export type { CacheBustHook } from './cache-bust.js';
 export { sanitizeSlug } from './slug.js';
+export { normalizeTitleSeparators } from './title.js';
 
 export interface PublishOptions {
   cacheBust?: CacheBustHook;
