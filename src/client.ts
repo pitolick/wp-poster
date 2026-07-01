@@ -13,7 +13,8 @@ export class WPClient {
 
   constructor(config: WPPosterConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
-    this.auth = 'Basic ' + Buffer.from(`${config.username}:${config.appPassword}`).toString('base64');
+    this.auth =
+      'Basic ' + Buffer.from(`${config.username}:${config.appPassword}`).toString('base64');
     this.fetchFn = config.fetch ?? globalThis.fetch;
     this.requestDelayMs = config.requestDelayMs ?? 0;
     this.createMissingCategories = config.createMissingCategories ?? true;
@@ -56,7 +57,11 @@ export class WPClient {
     return this.postJson<WPPostResponse>(`/wp-json/wp/v2/${restBase}`, payload);
   }
 
-  async updateAt(restBase: string, id: number, payload: Record<string, unknown>): Promise<WPPostResponse> {
+  async updateAt(
+    restBase: string,
+    id: number,
+    payload: Record<string, unknown>,
+  ): Promise<WPPostResponse> {
     return this.postJson<WPPostResponse>(`/wp-json/wp/v2/${restBase}/${id}`, payload);
   }
 
@@ -164,7 +169,8 @@ function delay(ms: number): Promise<void> {
  *   （`filename=` には ASCII フォールバックとして `?` を残す）
  */
 export function buildContentDisposition(filename: string): string {
-  // 制御文字を除去（HTTP ヘッダインジェクション対策）
+  // 制御文字を除去（HTTP ヘッダインジェクション対策）。制御文字の除去が目的なのでルールを無効化する。
+  // eslint-disable-next-line no-control-regex
   const noControl = filename.replace(/[\x00-\x1F\x7F]/g, '');
   const escaped = noControl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
