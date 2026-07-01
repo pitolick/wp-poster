@@ -62,9 +62,7 @@ function renderParagraph(t: Tokens.Paragraph): string {
 function renderList(t: Tokens.List): string {
   const tag = t.ordered ? 'ol' : 'ul';
   const blockName = t.ordered ? 'list {"ordered":true}' : 'list';
-  const items = t.items
-    .map((item) => `<li>${renderInlineText(item.text)}</li>`)
-    .join('');
+  const items = t.items.map((item) => `<li>${renderInlineText(item.text)}</li>`).join('');
   return wrapBlock(blockName, `<${tag} class="wp-block-list">${items}</${tag}>`);
 }
 

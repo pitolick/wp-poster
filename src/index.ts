@@ -58,7 +58,11 @@ export class WPPoster {
   }
 
   /** 既存投稿の更新 */
-  async update(id: number, input: Partial<PostInput>, options: PublishOptions = {}): Promise<WPPostResponse> {
+  async update(
+    id: number,
+    input: Partial<PostInput>,
+    options: PublishOptions = {},
+  ): Promise<WPPostResponse> {
     const payload = await this.buildPayload(input, options);
     const post = await this.client.updatePost(id, payload);
     await (options.cacheBust ?? noopCacheBust)(post);

@@ -31,7 +31,10 @@ const EXT_FROM_MIME: Record<string, string> = {
 
 const KNOWN_IMAGE_EXTS = new Set(Object.keys(MIME_FROM_EXT));
 
-export async function downloadImage(url: string, options: DownloadOptions = {}): Promise<DownloadedImage> {
+export async function downloadImage(
+  url: string,
+  options: DownloadOptions = {},
+): Promise<DownloadedImage> {
   const f = options.fetch ?? globalThis.fetch;
   const res = await f(url, { method: 'GET' });
   if (!res.ok) {

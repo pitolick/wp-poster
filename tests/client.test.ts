@@ -2,10 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { WPClient, buildContentDisposition } from '../src/client.js';
 
 function makeFetchOk<T>(body: T, init: ResponseInit = { status: 200 }): typeof fetch {
-  return vi.fn(async () => new Response(JSON.stringify(body), {
-    status: init.status,
-    headers: { 'content-type': 'application/json' },
-  })) as unknown as typeof fetch;
+  return vi.fn(
+    async () =>
+      new Response(JSON.stringify(body), {
+        status: init.status,
+        headers: { 'content-type': 'application/json' },
+      }),
+  ) as unknown as typeof fetch;
 }
 
 describe('WPClient', () => {
@@ -25,7 +28,9 @@ describe('WPClient', () => {
     expect(url).toBe('https://example.com/wp-json/wp/v2/posts/1');
     const headers = init.headers as Record<string, string>;
     // 'admin:pass word' を base64 化したもの
-    expect(headers.Authorization).toBe('Basic ' + Buffer.from('admin:pass word').toString('base64'));
+    expect(headers.Authorization).toBe(
+      'Basic ' + Buffer.from('admin:pass word').toString('base64'),
+    );
     expect(headers['content-type']).toBeUndefined();
   });
 
@@ -40,17 +45,21 @@ describe('WPClient', () => {
 
     await client.postJson('/wp-json/wp/v2/posts', { title: 'hi' });
 
-    const [, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+    const [, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0];
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
     expect(init.body).toBe(JSON.stringify({ title: 'hi' }));
   });
 
   it('4xx は WPRequestError を投げる', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: 'bad' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    })) as unknown as typeof fetch;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ code: 'bad' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
     const client = new WPClient({
       url: 'https://example.com',
       username: 'u',
@@ -118,27 +127,60 @@ describe('WPClient', () => {
 
 describe('WPClient.createPost / updatePost', () => {
   it('createPost は POST /wp/v2/posts に payload を送る', async () => {
-    const fetchMock = vi.fn(async () => new Response(
-      JSON.stringify({ id: 42, link: 'https://e/p', status: 'draft', date: '2026-05-19T00:00:00', title: { rendered: 'T' } }),
-      { status: 201, headers: { 'content-type': 'application/json' } },
-    )) as unknown as typeof fetch;
-    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: 42,
+            link: 'https://e/p',
+            status: 'draft',
+            date: '2026-05-19T00:00:00',
+            title: { rendered: 'T' },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+    ) as unknown as typeof fetch;
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
 
     const res = await client.createPost({ title: 'T', content: '<p>x</p>', status: 'draft' });
 
     expect(res.id).toBe(42);
-    const [url, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+    const [url, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0];
     expect(url).toBe('https://e/wp-json/wp/v2/posts');
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body as string)).toEqual({ title: 'T', content: '<p>x</p>', status: 'draft' });
+    expect(JSON.parse(init.body as string)).toEqual({
+      title: 'T',
+      content: '<p>x</p>',
+      status: 'draft',
+    });
   });
 
   it('updatePost は POST /wp/v2/posts/:id に payload を送る', async () => {
-    const fetchMock = vi.fn(async () => new Response(
-      JSON.stringify({ id: 42, link: 'l', status: 'publish', date: 'd', title: { rendered: 'T' } }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    )) as unknown as typeof fetch;
-    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: 42,
+            link: 'l',
+            status: 'publish',
+            date: 'd',
+            title: { rendered: 'T' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    ) as unknown as typeof fetch;
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
 
     await client.updatePost(42, { status: 'publish' });
 
@@ -161,21 +203,31 @@ describe('WPClient タグ・カテゴリ解決', () => {
       // 3: POST 作成「bar」→ id=2
       if (url.includes('/tags?search=foo')) {
         return new Response(JSON.stringify([{ id: 1, name: 'foo', slug: 'foo' }]), {
-          status: 200, headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         });
       }
       if (url.includes('/tags?search=bar') && init.method !== 'POST') {
-        return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
       }
       if (url.endsWith('/tags') && init.method === 'POST') {
         return new Response(JSON.stringify({ id: 2, name: 'bar', slug: 'bar' }), {
-          status: 201, headers: { 'content-type': 'application/json' },
+          status: 201,
+          headers: { 'content-type': 'application/json' },
         });
       }
       return new Response('not found', { status: 404 });
     }) as unknown as typeof fetch;
 
-    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
     const ids = await client.resolveTagIds(['foo', 'bar']);
     expect(ids).toEqual([1, 2]);
     expect(calls.filter((c) => c.method === 'POST').length).toBe(1);
@@ -185,13 +237,19 @@ describe('WPClient タグ・カテゴリ解決', () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes('/categories?search=manga')) {
         return new Response(JSON.stringify([{ id: 5, name: 'manga', slug: 'manga' }]), {
-          status: 200, headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         });
       }
       return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof fetch;
 
-    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
     const ids = await client.resolveCategoryIds(['manga']);
     expect(ids).toEqual([5]);
   });
@@ -202,7 +260,8 @@ describe('WPClient タグ・カテゴリ解決', () => {
       calls.push({ url, method: init.method ?? 'GET' });
       if (url.includes('/categories?search=manga')) {
         return new Response(JSON.stringify([{ id: 5, name: 'manga', slug: 'manga' }]), {
-          status: 200, headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         });
       }
       // 未存在カテゴリ "newcat" の検索は空配列
@@ -230,12 +289,14 @@ describe('WPClient タグ・カテゴリ解決', () => {
       calls.push({ url, method: init.method ?? 'GET' });
       if (url.includes('/tags?search=bar') && init.method !== 'POST') {
         return new Response(JSON.stringify([]), {
-          status: 200, headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         });
       }
       if (url.endsWith('/tags') && init.method === 'POST') {
         return new Response(JSON.stringify({ id: 99, name: 'bar', slug: 'bar' }), {
-          status: 201, headers: { 'content-type': 'application/json' },
+          status: 201,
+          headers: { 'content-type': 'application/json' },
         });
       }
       return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
@@ -260,18 +321,25 @@ describe('WPClient タグ・カテゴリ解決', () => {
     const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
       if (url.includes('/tags?search=ai') && init.method !== 'POST') {
         return new Response(JSON.stringify([{ id: 10, name: 'AI Tools', slug: 'ai-tools' }]), {
-          status: 200, headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         });
       }
       if (url.endsWith('/tags') && init.method === 'POST') {
         return new Response(JSON.stringify({ id: 11, name: 'ai', slug: 'ai' }), {
-          status: 201, headers: { 'content-type': 'application/json' },
+          status: 201,
+          headers: { 'content-type': 'application/json' },
         });
       }
       return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof fetch;
 
-    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
     const ids = await client.resolveTagIds(['ai']);
     expect(ids).toEqual([11]);
   });
@@ -288,12 +356,21 @@ describe('WPClient.uploadMedia', () => {
         receivedBody = init.body;
         firstCall = false;
       }
-      return new Response(JSON.stringify({ id: 77, source_url: 'https://e/x.jpg', media_type: 'image' }), {
-        status: 201, headers: { 'content-type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ id: 77, source_url: 'https://e/x.jpg', media_type: 'image' }),
+        {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     }) as unknown as typeof fetch;
 
-    const client = new WPClient({ url: 'https://e', username: 'u', appPassword: 'p', fetch: fetchMock });
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
     const data = new Uint8Array([0xff, 0xd8, 0xff]);
     const media = await client.uploadMedia({
       data,
@@ -335,7 +412,12 @@ describe('buildContentDisposition', () => {
 });
 
 function clientWithFetch(fetchImpl: typeof fetch) {
-  return new WPClient({ url: 'https://wp.example', username: 'u', appPassword: 'p', fetch: fetchImpl });
+  return new WPClient({
+    url: 'https://wp.example',
+    username: 'u',
+    appPassword: 'p',
+    fetch: fetchImpl,
+  });
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -353,7 +435,7 @@ describe('WPClient rest_base 汎用化', () => {
     const found = await client.findBySlug('affilicard_product', 'dmm-books-b950rshes00197');
 
     expect(found).toEqual({ id: 42 });
-    const calledUrl = (fetchMock.mock.calls[0][0] as string);
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
     expect(calledUrl).toContain('/wp-json/wp/v2/affilicard_product');
     expect(calledUrl).toContain('slug=dmm-books-b950rshes00197');
     expect(calledUrl).toContain('status=any');
@@ -367,7 +449,9 @@ describe('WPClient rest_base 汎用化', () => {
   });
 
   it('createAt は rest_base 直下に POST する', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 7, link: 'https://wp.example/?p=7' }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ id: 7, link: 'https://wp.example/?p=7' }));
     const client = clientWithFetch(fetchMock as unknown as typeof fetch);
 
     const res = await client.createAt('affilicard_product', { title: 'X' });
@@ -383,6 +467,8 @@ describe('WPClient rest_base 汎用化', () => {
 
     await client.updateAt('affilicard_product', 7, { title: 'Y' });
 
-    expect(fetchMock.mock.calls[0][0]).toBe('https://wp.example/wp-json/wp/v2/affilicard_product/7');
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://wp.example/wp-json/wp/v2/affilicard_product/7',
+    );
   });
 });
