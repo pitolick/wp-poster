@@ -24,6 +24,26 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm test
+      # 品質ゲート（src の import）だけでは build/exports の drift を捕捉できないため、
+      # 実際に publish される dist を pack→install→plain node import で検証する。
+      - name: 配布物（dist）の consumer smoke
+        run: |
+          set -euo pipefail
+          ROOT="$PWD"
+          TARBALL="$(npm pack --silent)"
+          WORK="$(mktemp -d)"
+          cd "$WORK"
+          npm init -y >/dev/null 2>&1
+          npm pkg set type=module >/dev/null 2>&1
+          npm install "$ROOT/$TARBALL" >/dev/null 2>&1
+          node --input-type=module -e "
+          import { WPPoster } from '@pitolick/wp-poster';
+          import { readFrontmatter } from '@pitolick/wp-poster/draft';
+          if (typeof WPPoster !== 'function') throw new Error('WPPoster missing');
+          if (typeof readFrontmatter !== 'function') throw new Error('readFrontmatter missing');
+          console.log('dist consumer smoke OK');
+          "
+          cd "$ROOT"; rm -f "$TARBALL"
 
   dependabot-auto-merge:
     needs: quality
