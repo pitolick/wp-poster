@@ -2,7 +2,7 @@
 
 ## プロジェクト概要
 
-WordPress 投稿機構の汎用 TypeScript ライブラリ。複数の WordPress 投稿プロジェクトから submodule として利用される想定で設計されている。
+WordPress 投稿機構の汎用 TypeScript ライブラリ。複数の WordPress 投稿プロジェクトから **GitHub Packages（npm registry・`@pitolick/wp-poster`）** 経由で利用される想定で設計されている。
 
 - Markdown を Gutenberg ブロックに変換し、WordPress REST API で投稿する責務だけを持つ
 - 記事生成・サイト固有ロジックは含めない（呼び出し側の責務）

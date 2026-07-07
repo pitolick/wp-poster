@@ -1,20 +1,30 @@
 {
   "name": "@pitolick/wp-poster",
-  "version": "0.2.0",
-  "private": true,
+  "version": "0.3.0",
   "description": "WordPress 投稿機構の汎用 TypeScript ライブラリ",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./draft": {
-      "types": "./src/draft/index.ts",
-      "default": "./src/draft/index.ts"
+      "types": "./dist/draft/index.d.ts",
+      "default": "./dist/draft/index.js"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pitolick/wp-poster.git"
   },
   "engines": {
     "node": ">=20"
@@ -25,8 +35,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepack": "npm run build",
     "prepare": "husky"
   },
   "lint-staged": {
