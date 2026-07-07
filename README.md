@@ -1,6 +1,33 @@
 # wp-poster
 
-WordPress 投稿機構の汎用 TypeScript ライブラリ。`@pitolick/wp-poster` として複数プロジェクトから submodule として利用される。
+WordPress 投稿機構の汎用 TypeScript ライブラリ。`@pitolick/wp-poster` として複数プロジェクトから **GitHub Packages（npm registry）** 経由で利用される。
+
+## インストール
+
+GitHub Packages（`@pitolick` スコープ）で配布している。利用側リポジトリに `.npmrc` を置き、`read:packages` 権限のトークンを渡す。
+
+```ini
+# .npmrc
+@pitolick:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+```bash
+npm install @pitolick/wp-poster
+```
+
+- **配布物**: ESM の `.js` + `.d.ts`（`dist/`）。`type: module`。tsx でも plain node でも import 可能。
+- **サブパス**: frontmatter 解析は `@pitolick/wp-poster/draft` から import する。
+
+### 認証（利用者別）
+
+事前に、パッケージの **Package settings → Manage Actions access** で利用側リポジトリに **Read** access を付与しておく。
+
+| 利用者 | 認証 |
+| --- | --- |
+| **CI（GitHub Actions）** | `NODE_AUTH_TOKEN` に `GITHUB_TOKEN`（job に `permissions: packages: read`）。PAT 不要。 |
+| **Dependabot** | パッケージに対象リポジトリの Read access を付与すれば `GITHUB_TOKEN` で自動認証される（2026-06-23 以降・GitHub ホスト registry のみ）。`dependabot.yml` への PAT 登録は不要。 |
+| **ローカル** | `read:packages` 権限の PAT を `~/.npmrc`（または `NODE_AUTH_TOKEN`）に設定。 |
 
 ## 責務
 
@@ -189,7 +216,7 @@ source:
 ## テスト
 
 ```bash
-npm test          # 親リポジトリのルートから（npm workspaces を利用）
+npm test          # 単独リポジトリのルートで実行
 npm run test:watch
 ```
 
