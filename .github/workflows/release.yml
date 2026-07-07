@@ -23,20 +23,25 @@ jobs:
     env:
       HUSKY: 0
     steps:
+      # persist-credentials: false で認証情報をランナーに残さない（artipacked 対策）。
+      # fetch-depth: 0 でタグをローカル取得し、既存判定は git tag（ネットワーク不要）で行う。
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
 
+      # 特権ジョブ（packages: write）ではキャッシュポイズニング回避のため npm キャッシュを使わない。
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
-          cache: 'npm'
 
       - name: publish 要否判定（version 変化＝タグ未存在か）
         id: check
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+          if [ -n "$(git tag -l "v${VERSION}")" ]; then
             echo "v${VERSION} は既に publish 済み（タグ存在）。skip します。"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
@@ -65,8 +70,9 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.check.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
-          git push origin "v${VERSION}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "v${VERSION}"

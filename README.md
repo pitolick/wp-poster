@@ -18,7 +18,16 @@ npm install @pitolick/wp-poster
 
 - **配布物**: ESM の `.js` + `.d.ts`（`dist/`）。`type: module`。tsx でも plain node でも import 可能。
 - **サブパス**: frontmatter 解析は `@pitolick/wp-poster/draft` から import する。
-- CI では `NODE_AUTH_TOKEN` に `GITHUB_TOKEN`（`permissions: packages: read`）を、ローカル／dependabot では `read:packages` の PAT を渡す。
+
+### 認証（利用者別）
+
+事前に、パッケージの **Package settings → Manage Actions access** で利用側リポジトリに **Read** access を付与しておく。
+
+| 利用者 | 認証 |
+| --- | --- |
+| **CI（GitHub Actions）** | `NODE_AUTH_TOKEN` に `GITHUB_TOKEN`（job に `permissions: packages: read`）。PAT 不要。 |
+| **Dependabot** | パッケージに対象リポジトリの Read access を付与すれば `GITHUB_TOKEN` で自動認証される（2026-06-23 以降・GitHub ホスト registry のみ）。`dependabot.yml` への PAT 登録は不要。 |
+| **ローカル** | `read:packages` 権限の PAT を `~/.npmrc`（または `NODE_AUTH_TOKEN`）に設定。 |
 
 ## 責務
 
