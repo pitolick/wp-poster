@@ -1,4 +1,10 @@
-import type { WPPosterConfig, WPPostResponse, WPTerm, WPMedia } from './types.js';
+import type {
+  WPPosterConfig,
+  WPPostResponse,
+  WPTerm,
+  WPMedia,
+  UploadMediaOptions,
+} from './types.js';
 import { WPRequestError } from './errors.js';
 
 type FetchFn = typeof fetch;
@@ -105,13 +111,7 @@ export class WPClient {
     return this.resolveTermIds('/wp-json/wp/v2/categories', names);
   }
 
-  async uploadMedia(opts: {
-    data: Uint8Array;
-    filename: string;
-    mimeType: string;
-    alt?: string;
-    caption?: string;
-  }): Promise<WPMedia> {
+  async uploadMedia(opts: UploadMediaOptions): Promise<WPMedia> {
     // WP REST API は Content-Disposition + 生バイナリ body での upload を受け付ける
     const media = await this.postRaw<WPMedia>('/wp-json/wp/v2/media', {
       headers: {
@@ -121,11 +121,14 @@ export class WPClient {
       body: opts.data,
     });
 
-    // alt / caption の更新は別エンドポイント
-    if (opts.alt || opts.caption) {
+    // alt / caption / post の更新は別エンドポイント
+    // （生バイナリ upload では JSON フィールドを同送できないため後続の JSON POST で設定する）
+    // 空文字 alt/caption や post=0 も明示指定として送れるよう truthy ではなく undefined 判定にする
+    if (opts.alt !== undefined || opts.caption !== undefined || opts.post !== undefined) {
       await this.postJson(`/wp-json/wp/v2/media/${media.id}`, {
         ...(opts.alt !== undefined ? { alt_text: opts.alt } : {}),
         ...(opts.caption !== undefined ? { caption: opts.caption } : {}),
+        ...(opts.post !== undefined ? { post: opts.post } : {}),
       });
     }
     return media;

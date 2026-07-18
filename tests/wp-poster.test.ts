@@ -160,6 +160,61 @@ describe('WPPoster.publish', () => {
     expect((post!.body as { featured_media: number }).featured_media).toBe(99);
   });
 
+  it('featuredImage アップロード後、確定した投稿 ID をメディアの親(post)に設定する', async () => {
+    const { fetch: f, calls } = makeRecordingFetch((c) => {
+      if (c.url === 'https://cdn/x.jpg')
+        return new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        });
+      // メディアアップロード（生バイナリ POST /wp/v2/media）
+      if (c.url.endsWith('/wp/v2/media') && c.method === 'POST') {
+        return jsonRes({ id: 99, source_url: 'https://e/x.jpg', media_type: 'image' }, 201);
+      }
+      // 親設定の後続更新（POST /wp/v2/media/99）
+      if (c.url.endsWith('/wp/v2/media/99') && c.method === 'POST') {
+        return jsonRes({ id: 99, source_url: 'https://e/x.jpg', media_type: 'image' }, 200);
+      }
+      if (c.url.endsWith('/wp/v2/posts') && c.method === 'POST') {
+        return jsonRes(
+          { id: 7, link: '', status: 'draft', date: 'd', title: { rendered: '' } },
+          201,
+        );
+      }
+      return jsonRes({}, 404);
+    });
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+
+    await poster.publish({
+      title: 't',
+      content: 'c',
+      featuredImage: { source: 'https://cdn/x.jpg' },
+    });
+
+    // 投稿作成後、メディア 99 の親を投稿 7 に設定する更新が飛ぶ
+    const attach = calls.find((c) => c.url.endsWith('/wp/v2/media/99') && c.method === 'POST');
+    expect(attach).toBeDefined();
+    expect((attach!.body as { post: number }).post).toBe(7);
+  });
+
+  it('featuredImage が無いときはメディアの親設定を行わない', async () => {
+    const { fetch: f, calls } = makeRecordingFetch((c) => {
+      if (c.url.endsWith('/wp/v2/posts') && c.method === 'POST') {
+        return jsonRes(
+          { id: 7, link: '', status: 'draft', date: 'd', title: { rendered: '' } },
+          201,
+        );
+      }
+      return jsonRes({}, 404);
+    });
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+
+    await poster.publish({ title: 't', content: 'c' });
+
+    // media への更新リクエストは一切発生しない
+    expect(calls.some((c) => c.url.includes('/wp/v2/media'))).toBe(false);
+  });
+
   it('markerTransformers を Markdown 変換に反映する', async () => {
     const marker: MarkerTransformer = {
       pattern: /\[affilicard id="(\d+)"\]/g,
@@ -304,6 +359,40 @@ describe('WPPoster.upsertBySlug', () => {
     );
     const sentBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
     expect(sentBody.slug).toBeUndefined(); // 更新時は slug を再送しない
+  });
+
+  it('create 経路で featuredImage を付けると確定 ID をメディアの親に設定する', async () => {
+    const { fetch: f, calls } = makeRecordingFetch((c) => {
+      if (c.url === 'https://cdn/x.jpg')
+        return new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        });
+      if (c.url.endsWith('/wp/v2/media') && c.method === 'POST') {
+        return jsonResponse({ id: 55, source_url: 'https://e/x.jpg', media_type: 'image' }, 201);
+      }
+      if (c.url.endsWith('/wp/v2/media/55') && c.method === 'POST') {
+        return jsonResponse({ id: 55, source_url: 'https://e/x.jpg', media_type: 'image' }, 200);
+      }
+      if (c.url.endsWith('/wp/v2/affilicard_product') && c.method === 'POST') {
+        return jsonResponse({ id: 21, link: 'https://wp.example/?p=21' }, 201);
+      }
+      // findBySlug（GET）→ なし
+      return jsonResponse([]);
+    });
+    const poster = new WPPoster({ ...base, fetch: f });
+
+    await poster.upsertBySlug('affilicard_product', {
+      title: 'X',
+      content: '',
+      slug: 'p-1',
+      status: 'publish',
+      featuredImage: { source: 'https://cdn/x.jpg' },
+    });
+
+    const attach = calls.find((c) => c.url.endsWith('/wp/v2/media/55') && c.method === 'POST');
+    expect(attach).toBeDefined();
+    expect((attach!.body as { post: number }).post).toBe(21);
   });
 
   it('slug 未指定はエラー', async () => {
