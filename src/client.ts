@@ -1,4 +1,10 @@
-import type { WPPosterConfig, WPPostResponse, WPTerm, WPMedia } from './types.js';
+import type {
+  WPPosterConfig,
+  WPPostResponse,
+  WPTerm,
+  WPMedia,
+  UploadMediaOptions,
+} from './types.js';
 import { WPRequestError } from './errors.js';
 
 type FetchFn = typeof fetch;
@@ -105,15 +111,7 @@ export class WPClient {
     return this.resolveTermIds('/wp-json/wp/v2/categories', names);
   }
 
-  async uploadMedia(opts: {
-    data: Uint8Array;
-    filename: string;
-    mimeType: string;
-    alt?: string;
-    caption?: string;
-    /** 親投稿 ID。設定するとメディアが投稿に紐付き、GET /media?parent= で検出・後片付けできる */
-    post?: number;
-  }): Promise<WPMedia> {
+  async uploadMedia(opts: UploadMediaOptions): Promise<WPMedia> {
     // WP REST API は Content-Disposition + 生バイナリ body での upload を受け付ける
     const media = await this.postRaw<WPMedia>('/wp-json/wp/v2/media', {
       headers: {

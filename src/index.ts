@@ -19,6 +19,7 @@ export type {
   WPPostResponse,
   WPTerm,
   WPMedia,
+  UploadMediaOptions,
 } from './types.js';
 export { WPClient } from './client.js';
 export { WPPosterError, WPRequestError } from './errors.js';

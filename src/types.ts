@@ -113,3 +113,14 @@ export interface WPMedia {
   source_url: string;
   media_type: string;
 }
+
+/** `WPClient.uploadMedia` の引数 */
+export interface UploadMediaOptions {
+  data: Uint8Array;
+  filename: string;
+  mimeType: string;
+  alt?: string;
+  caption?: string;
+  /** 親投稿 ID。設定するとメディアが投稿に紐付き、GET /media?parent= で検出・後片付けできる */
+  post?: number;
+}
