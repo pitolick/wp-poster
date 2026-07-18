@@ -385,6 +385,65 @@ describe('WPClient.uploadMedia', () => {
     // 生のバイナリ body
     expect(receivedBody).toBeInstanceOf(Uint8Array);
   });
+
+  it('post を渡すと親投稿を後続の media 更新で設定する', async () => {
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({
+        url,
+        method: init.method ?? 'GET',
+        body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body,
+      });
+      return new Response(
+        JSON.stringify({ id: 77, source_url: 'https://e/x.jpg', media_type: 'image' }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    await client.uploadMedia({
+      data: new Uint8Array([0xff, 0xd8, 0xff]),
+      filename: 'x.jpg',
+      mimeType: 'image/jpeg',
+      post: 42,
+    });
+
+    // 1回目: 生バイナリ upload、2回目: /media/77 への JSON 更新で post を設定
+    const update = calls.find((c) => c.url.endsWith('/wp/v2/media/77') && c.method === 'POST');
+    expect(update).toBeDefined();
+    expect((update!.body as { post: number }).post).toBe(42);
+  });
+
+  it('alt/caption/post いずれも無ければ追加の media 更新をしない', async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, method: init.method ?? 'GET' });
+      return new Response(
+        JSON.stringify({ id: 77, source_url: 'https://e/x.jpg', media_type: 'image' }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    await client.uploadMedia({
+      data: new Uint8Array([0xff]),
+      filename: 'x.jpg',
+      mimeType: 'image/jpeg',
+    });
+
+    // /media への POST は upload の1回のみ、/media/:id への更新は発生しない
+    expect(calls.filter((c) => c.url.includes('/wp/v2/media')).length).toBe(1);
+  });
 });
 
 describe('buildContentDisposition', () => {

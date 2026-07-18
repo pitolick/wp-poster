@@ -8,7 +8,7 @@ import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
 import { WPPosterError } from './errors.js';
 import { sanitizeSlug } from './slug.js';
 
-export const WP_POSTER_VERSION = '0.3.0';
+export const WP_POSTER_VERSION = '0.4.0';
 
 export type {
   PostInput,
@@ -54,6 +54,7 @@ export class WPPoster {
   async publish(input: PostInput, options: PublishOptions = {}): Promise<WPPostResponse> {
     const payload = await this.buildPayload(input, options);
     const post = await this.client.createPost(payload);
+    await this.attachFeaturedMedia(payload, post.id);
     await (options.cacheBust ?? noopCacheBust)(post);
     return post;
   }
@@ -66,6 +67,7 @@ export class WPPoster {
   ): Promise<WPPostResponse> {
     const payload = await this.buildPayload(input, options);
     const post = await this.client.updatePost(id, payload);
+    await this.attachFeaturedMedia(payload, post.id);
     await (options.cacheBust ?? noopCacheBust)(post);
     return post;
   }
@@ -99,8 +101,24 @@ export class WPPoster {
       post = await this.client.createAt(postType, payload);
       created = true;
     }
+    await this.attachFeaturedMedia(payload, post.id);
     await (options.cacheBust ?? noopCacheBust)(post);
     return { id: post.id, created, link: post.link };
+  }
+
+  /**
+   * buildPayload でアップロードした featured メディアに親投稿を後追いで紐付ける。
+   * アイキャッチはバイナリ upload の時点で投稿 ID が未確定のため、投稿確定後に
+   * メディアの `post` を設定しないと親削除時に孤児メディアとして残ってしまう。
+   */
+  private async attachFeaturedMedia(
+    payload: Record<string, unknown>,
+    postId: number,
+  ): Promise<void> {
+    const mediaId = payload.featured_media;
+    if (typeof mediaId === 'number' && mediaId > 0) {
+      await this.client.updateAt('media', mediaId, { post: postId });
+    }
   }
 
   private async buildPayload(

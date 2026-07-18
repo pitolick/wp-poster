@@ -111,6 +111,8 @@ export class WPClient {
     mimeType: string;
     alt?: string;
     caption?: string;
+    /** 親投稿 ID。設定するとメディアが投稿に紐付き、GET /media?parent= で検出・後片付けできる */
+    post?: number;
   }): Promise<WPMedia> {
     // WP REST API は Content-Disposition + 生バイナリ body での upload を受け付ける
     const media = await this.postRaw<WPMedia>('/wp-json/wp/v2/media', {
@@ -121,11 +123,14 @@ export class WPClient {
       body: opts.data,
     });
 
-    // alt / caption の更新は別エンドポイント
-    if (opts.alt || opts.caption) {
+    // alt / caption / post の更新は別エンドポイント
+    // （生バイナリ upload では JSON フィールドを同送できないため後続の JSON POST で設定する）
+    // 空文字 alt/caption や post=0 も明示指定として送れるよう truthy ではなく undefined 判定にする
+    if (opts.alt !== undefined || opts.caption !== undefined || opts.post !== undefined) {
       await this.postJson(`/wp-json/wp/v2/media/${media.id}`, {
         ...(opts.alt !== undefined ? { alt_text: opts.alt } : {}),
         ...(opts.caption !== undefined ? { caption: opts.caption } : {}),
+        ...(opts.post !== undefined ? { post: opts.post } : {}),
       });
     }
     return media;
