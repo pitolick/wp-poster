@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       # 特権ジョブ（packages: write）ではキャッシュポイズニング回避のため npm キャッシュを使わない。
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
