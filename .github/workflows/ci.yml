@@ -55,16 +55,19 @@ jobs:
     steps:
       - name: メタデータ取得
         id: metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: patch / dev minor / GitHub Actions minor を自動マージ
+      # patch / minor はすべて自動マージする（dev / prod / indirect / Actions を問わない）。
+      # 以前は direct:development に限っていたため、推移的依存（indirect）の minor が
+      # 条件から漏れて滞留していた。グループ PR では update-type がグループ内の最大の
+      # semver 変更を返すため、この 2 項だけで major の混入を弾ける。
+      - name: patch / minor を自動マージ
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          (steps.metadata.outputs.update-type == 'version-update:semver-minor' &&
-           steps.metadata.outputs.dependency-type == 'direct:development') ||
-          (steps.metadata.outputs.update-type == 'version-update:semver-minor' &&
-           steps.metadata.outputs.package-ecosystem == 'github_actions')
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        # --auto は main-protection ruleset の required status checks が前提。
+        # ruleset が無い状態では "Protected branch rules not configured" で必ず失敗する。
         run: gh pr merge ${{ github.event.pull_request.number }} --auto --squash --delete-branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
