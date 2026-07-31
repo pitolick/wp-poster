@@ -4,36 +4,63 @@ updates:
     directory: /
     schedule:
       interval: weekly
-
     open-pull-requests-limit: 10
     labels:
       - dependencies
     commit-message:
       prefix: chore
       include: scope
+    # patch / minor を人のレビューなしに自動マージするため、汚染されたリリースに対する
+    # 事実上唯一の防波堤になる。GitHub 既定の 3 日から 7 日へ引き上げる。
+    # security updates は cooldown の対象外で即時に立つ。
+    cooldown:
+      default-days: 7
+    # Dependabot は「先にマッチしたグループ」に入れるため、定義順そのものが設計の一部。
     groups:
-      dev-dependencies:
+      # ① 対で上げないと CI が通らないファミリ。update-types を指定せず major も含める。
+      #    typescript 単独の major は typescript-eslint の peer 制約で必ず ERESOLVE になる。
+      typescript-toolchain:
+        patterns:
+          - 'typescript'
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
+          - 'eslint'
+          - '@eslint/*'
+          - 'eslint-config-prettier'
+      # ② 直接依存を prod / dev に分ける。壊れた依存 1 つの巻き添え範囲を狭めるため。
+      production:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development:
         dependency-type: development
         update-types:
           - minor
           - patch
-      production-dependencies:
-        dependency-type: production
+      # ③ ①②のどれにも入らなかったもの ＝ 推移的依存（indirect）。
+      #    dependency-type は直接依存しか分類しないため、ここでしか拾えない。必ず最後に置くこと。
+      indirect:
+        patterns:
+          - '*'
         update-types:
+          - minor
           - patch
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-
     open-pull-requests-limit: 5
     labels:
       - dependencies
     commit-message:
       prefix: ci
       include: scope
+    cooldown:
+      default-days: 7
     groups:
+      # Actions 同士は独立しているためファミリグループは不要。
       github-actions:
         patterns:
           - '*'
