@@ -9,6 +9,41 @@ import { WPRequestError } from './errors.js';
 
 type FetchFn = typeof fetch;
 
+/**
+ * term 検索の 1 リクエストあたり件数。
+ *
+ * WP REST の既定は 10 件で、`search` は部分一致。「異世界」のようにありふれた語は
+ * それを含む term 名（「異世界おじさん」「Re:ゼロから始める異世界生活」…）に埋もれて
+ * 完全一致が結果に入らない。100 は WP REST の `per_page` 上限。
+ */
+const TERM_SEARCH_PER_PAGE = 100;
+
+/**
+ * WP が「その term は既にある」と 400 で返したときの、既存 term ID を取り出す。
+ *
+ * WP はこの場合 `{"code":"term_exists","data":{"status":400,"term_id":421}}` の形で
+ * **既存 term の ID を本文に載せてくる**ので、作成失敗を回復できる。
+ * 受け付けるのは `WPRequestError` かつ status 400 かつ `code === 'term_exists'` で、
+ * `data.term_id` が数値のときだけ。形が違う／別のエラーなら `undefined` を返し、
+ * 呼び出し元にそのまま投げ直させる（エラーを握り潰さない）。
+ *
+ * **パッケージの公開 API ではない**（`src/index.ts` は再エクスポートせず、
+ * `package.json#exports` も `.` と `./draft` だけなので利用者からは到達できない）。
+ * `export` しているのは単体テストから直接叩くためで、同ファイルの
+ * `buildContentDisposition` と同じ扱い。したがって公開仕様（README.md /
+ * `src/types.ts`）には載せず、仕様はこの TSDoc を正とする。
+ */
+export function termExistsId(err: unknown): number | undefined {
+  if (!(err instanceof WPRequestError) || err.status !== 400) return undefined;
+  const body = err.body;
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { code, data } = body as { code?: unknown; data?: unknown };
+  if (code !== 'term_exists') return undefined;
+  if (typeof data !== 'object' || data === null) return undefined;
+  const termId = (data as { term_id?: unknown }).term_id;
+  return typeof termId === 'number' ? termId : undefined;
+}
+
 export class WPClient {
   private readonly baseUrl: string;
   private readonly auth: string;
@@ -79,6 +114,34 @@ export class WPClient {
     return this.updateAt('posts', id, payload);
   }
 
+  /**
+   * 名前の完全一致で既存 term を探す。
+   *
+   * **`search=` だけでは足りない。** `search` は部分一致で、しかも既定 `per_page` は 10 件。
+   * ありふれた語（例「異世界」）はそれを含む長い term 名に埋もれて、**完全一致が結果に現れない**。
+   * 見つからないと呼び出し元は新規作成に回り、WP が 400 `term_exists` を返して投稿ごと落ちる。
+   *
+   * そこで 2 段で探す:
+   *
+   * 1. `search=`（`per_page` を上げる）— **カスタムスラッグの term もこれで拾える**
+   *    （名前とスラッグが対応しない term は 2 の方法では引けないため、こちらを先に見る）
+   * 2. `slug=` の完全一致 — WP が入力を term スラッグと同じ規則で正規化して照合するので、
+   *    件数上限の影響を受けずに 1 件で引ける
+   */
+  private async findTermByName(
+    endpoint: '/wp-json/wp/v2/tags' | '/wp-json/wp/v2/categories',
+    name: string,
+  ): Promise<WPTerm | undefined> {
+    const q = encodeURIComponent(name);
+    const searched = await this.get<WPTerm[]>(
+      `${endpoint}?search=${q}&per_page=${TERM_SEARCH_PER_PAGE}`,
+    );
+    const exact = searched.find((t) => t.name === name);
+    if (exact) return exact;
+    const bySlug = await this.get<WPTerm[]>(`${endpoint}?slug=${q}&per_page=1`);
+    return bySlug.find((t) => t.name === name);
+  }
+
   private async resolveTermIds(
     endpoint: '/wp-json/wp/v2/tags' | '/wp-json/wp/v2/categories',
     names: string[],
@@ -86,19 +149,27 @@ export class WPClient {
     const ids: number[] = [];
     const isCategory = endpoint.endsWith('/categories');
     for (const name of names) {
-      const search = encodeURIComponent(name);
-      const found = await this.get<WPTerm[]>(`${endpoint}?search=${search}`);
-      const exact = found.find((t) => t.name === name);
-      if (exact) {
-        ids.push(exact.id);
+      const found = await this.findTermByName(endpoint, name);
+      if (found) {
+        ids.push(found.id);
         continue;
       }
       if (isCategory && !this.createMissingCategories) {
         this.onMissingCategory?.(name);
         continue;
       }
-      const created = await this.postJson<WPTerm>(endpoint, { name });
-      ids.push(created.id);
+      try {
+        const created = await this.postJson<WPTerm>(endpoint, { name });
+        ids.push(created.id);
+      } catch (err) {
+        // 探索で見つからなくても、WP 側には**同じスラッグの term が既にある**ことがある
+        // （名前が違うだけでスラッグが衝突する場合や、探索と作成の間に他プロセスが作った場合）。
+        // WP はそのとき 400 で**既存の term ID を教えてくれる**ので、それを使う。
+        // 作れないものを作ろうとして投稿ごと落とすより、WP が「これだ」と示した term に乗る。
+        const existing = termExistsId(err);
+        if (existing == null) throw err;
+        ids.push(existing);
+      }
     }
     return ids;
   }
