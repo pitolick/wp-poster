@@ -24,7 +24,7 @@ function renderToken(token: Token): string {
     case 'paragraph':
       return renderParagraph(token as Tokens.Paragraph);
     case 'hr':
-      return wrapBlock('separator', '<hr class="wp-block-separator"/>');
+      return wrapBlock('separator', '<hr class="wp-block-separator has-alpha-channel-opacity"/>');
     case 'list':
       return renderList(token as Tokens.List);
     case 'blockquote':
@@ -39,9 +39,13 @@ function renderToken(token: Token): string {
   }
 }
 
+/** core/heading の level 既定値。既定値は属性に書かないのが現行 WP の保存形。 */
+const DEFAULT_HEADING_LEVEL = 2;
+
 function renderHeading(t: Tokens.Heading): string {
   const inline = renderInlineText(t.text);
-  return wrapBlock(`heading {"level":${t.depth}}`, `<h${t.depth}>${inline}</h${t.depth}>`);
+  const name = t.depth === DEFAULT_HEADING_LEVEL ? 'heading' : `heading {"level":${t.depth}}`;
+  return wrapBlock(name, `<h${t.depth} class="wp-block-heading">${inline}</h${t.depth}>`);
 }
 
 function renderParagraph(t: Tokens.Paragraph): string {
@@ -62,7 +66,9 @@ function renderParagraph(t: Tokens.Paragraph): string {
 function renderList(t: Tokens.List): string {
   const tag = t.ordered ? 'ol' : 'ul';
   const blockName = t.ordered ? 'list {"ordered":true}' : 'list';
-  const items = t.items.map((item) => `<li>${renderInlineText(item.text)}</li>`).join('');
+  const items = t.items
+    .map((item) => wrapBlock('list-item', `<li>${renderInlineText(item.text)}</li>`))
+    .join('\n\n');
   return wrapBlock(blockName, `<${tag} class="wp-block-list">${items}</${tag}>`);
 }
 
