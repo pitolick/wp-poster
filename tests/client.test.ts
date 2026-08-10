@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { WPClient, buildContentDisposition } from '../src/client.js';
+import { WPClient, buildContentDisposition, termExistsId } from '../src/client.js';
+import { WPRequestError } from '../src/errors.js';
 
 function makeFetchOk<T>(body: T, init: ResponseInit = { status: 200 }): typeof fetch {
   return vi.fn(
@@ -219,7 +220,8 @@ describe('WPClient タグ・カテゴリ解決', () => {
           headers: { 'content-type': 'application/json' },
         });
       }
-      return new Response('not found', { status: 404 });
+      // slug= での再照会（該当なし）。実 WP は 404 ではなく空配列を返す
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof fetch;
 
     const client = new WPClient({
@@ -342,6 +344,140 @@ describe('WPClient タグ・カテゴリ解決', () => {
     });
     const ids = await client.resolveTagIds(['ai']);
     expect(ids).toEqual([11]);
+  });
+
+  it('resolveTagIds: search の件数上限に埋もれた完全一致は slug で拾う（新規作成しない）', async () => {
+    // 実測（e-comi 本番・2026-08-10）: `search=異世界` は「異世界おじさん」等の部分一致で
+    // 埋まり、完全一致の「異世界」が結果に現れない。slug 照会なら 1 件で引ける。
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push(`${init.method ?? 'GET'} ${url}`);
+      if (url.includes('search=')) {
+        return new Response(
+          JSON.stringify([
+            { id: 795, name: '異世界おじさん', slug: 'x1' },
+            { id: 805, name: '二度目の人生を異世界で', slug: 'x2' },
+          ]),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('slug=')) {
+        return new Response(JSON.stringify([{ id: 421, name: '異世界', slug: 'isekai' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      throw new Error(`想定外のリクエスト: ${init.method} ${url}`);
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    const ids = await client.resolveTagIds(['異世界']);
+
+    expect(ids).toEqual([421]);
+    // 作成に回らないこと（回ると WP が 400 term_exists を返して投稿ごと落ちる）
+    expect(calls.filter((c) => c.startsWith('POST')).length).toBe(0);
+  });
+
+  it('resolveTagIds: search は per_page を上げて引く', async () => {
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      calls.push(url);
+      return new Response(JSON.stringify([{ id: 3, name: 'foo', slug: 'foo' }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    await client.resolveTagIds(['foo']);
+
+    expect(calls[0]).toContain('per_page=100');
+  });
+
+  it('resolveTagIds: 作成が 400 term_exists なら本文の term_id を使う', async () => {
+    // 探索で見つからなくてもスラッグが衝突していることがある（名前違い・競合作成）。
+    // WP は既存 term の ID を教えてくれるので、投稿ごと落とさずそれに乗る。
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            code: 'term_exists',
+            message: 'このタクソノミーにはすでに同じ名前とスラッグの項目があります。',
+            data: { status: 400, term_id: 421 },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    await expect(client.resolveTagIds(['異世界'])).resolves.toEqual([421]);
+  });
+
+  it('resolveTagIds: term_exists 以外の 400 はそのまま投げる（黙って握らない）', async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      if (init.method === 'POST') {
+        return new Response(JSON.stringify({ code: 'rest_forbidden', data: { status: 400 } }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+
+    const client = new WPClient({
+      url: 'https://e',
+      username: 'u',
+      appPassword: 'p',
+      fetch: fetchMock,
+    });
+    await expect(client.resolveTagIds(['foo'])).rejects.toThrow('400');
+  });
+});
+
+describe('termExistsId', () => {
+  it('term_exists の 400 から term_id を取り出す', () => {
+    const err = new WPRequestError('400 Bad Request', 400, {
+      code: 'term_exists',
+      data: { status: 400, term_id: 421 },
+    });
+    expect(termExistsId(err)).toBe(421);
+  });
+
+  it('別のエラーコード・別の status・非エラーは undefined', () => {
+    expect(
+      termExistsId(new WPRequestError('400', 400, { code: 'rest_invalid_param' })),
+    ).toBeUndefined();
+    expect(
+      termExistsId(new WPRequestError('409', 409, { code: 'term_exists', data: { term_id: 1 } })),
+    ).toBeUndefined();
+    expect(termExistsId(new Error('boom'))).toBeUndefined();
+    expect(termExistsId(undefined)).toBeUndefined();
+  });
+
+  it('本文が文字列（非 JSON レスポンス）でも落ちない', () => {
+    expect(termExistsId(new WPRequestError('400', 400, 'Bad Request'))).toBeUndefined();
+  });
+
+  it('term_id が数値でなければ採用しない', () => {
+    const err = new WPRequestError('400', 400, { code: 'term_exists', data: { term_id: '421' } });
+    expect(termExistsId(err)).toBeUndefined();
   });
 });
 
