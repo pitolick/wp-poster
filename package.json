@@ -1,6 +1,6 @@
 {
   "name": "@pitolick/wp-poster",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "WordPress 投稿機構の汎用 TypeScript ライブラリ",
   "type": "module",
   "main": "./dist/index.js",

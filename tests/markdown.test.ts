@@ -10,20 +10,28 @@ describe('markdownToBlocks: 基本ブロック', () => {
     expect(out).toContain('<!-- /wp:paragraph -->');
   });
 
-  it('H1〜H4 を core/heading で出力（level 属性付き）', () => {
+  it('H1〜H4 を core/heading で出力（見出しには wp-block-heading クラスが付く）', () => {
     const out = markdownToBlocks('# Title\n\n## Sub\n\n### Inner\n\n#### Deep');
     expect(out).toContain('<!-- wp:heading {"level":1} -->');
-    expect(out).toContain('<h1>Title</h1>');
-    expect(out).toContain('<!-- wp:heading {"level":2} -->');
-    expect(out).toContain('<h2>Sub</h2>');
+    expect(out).toContain('<h1 class="wp-block-heading">Title</h1>');
     expect(out).toContain('<!-- wp:heading {"level":3} -->');
+    expect(out).toContain('<h3 class="wp-block-heading">Inner</h3>');
     expect(out).toContain('<!-- wp:heading {"level":4} -->');
   });
 
-  it('水平線を core/separator で出力', () => {
+  it('H2 は level が既定値なので属性を出さない', () => {
+    // core/heading の level 既定値は 2。既定値を書くとブロックエディタが開いた瞬間に
+    // 属性を落とした形へ保存し直すため、記事が「人手編集あり」に化ける。
+    const out = markdownToBlocks('## Sub');
+    expect(out).toContain('<!-- wp:heading -->');
+    expect(out).toContain('<h2 class="wp-block-heading">Sub</h2>');
+    expect(out).not.toContain('{"level":2}');
+  });
+
+  it('水平線を core/separator で出力（既定の不透明度クラス付き）', () => {
     const out = markdownToBlocks('foo\n\n---\n\nbar');
     expect(out).toContain('<!-- wp:separator -->');
-    expect(out).toContain('<hr class="wp-block-separator"/>');
+    expect(out).toContain('<hr class="wp-block-separator has-alpha-channel-opacity"/>');
     expect(out).toContain('<!-- /wp:separator -->');
   });
 
@@ -35,17 +43,29 @@ describe('markdownToBlocks: 基本ブロック', () => {
 });
 
 describe('markdownToBlocks: 複合ブロック', () => {
-  it('順序なしリストを core/list で出力', () => {
-    const out = markdownToBlocks('- a\n- b\n- c');
-    expect(out).toContain('<!-- wp:list -->');
-    expect(out).toContain('<ul class="wp-block-list">');
-    expect(out).toContain('<li>a</li>');
+  it('順序なしリストを core/list で出力（各項目が core/list-item ブロック）', () => {
+    // 現行 WP のリストは項目ごとに core/list-item ブロックを持つ。<li> を直接並べると
+    // ブロックエディタで開いた瞬間に list-item へ移行され、保存時に別物として書き戻る。
+    const out = markdownToBlocks('- a\n- b');
+    expect(out).toBe(
+      '<!-- wp:list -->\n' +
+        '<ul class="wp-block-list"><!-- wp:list-item -->\n' +
+        '<li>a</li>\n' +
+        '<!-- /wp:list-item -->\n' +
+        '\n' +
+        '<!-- wp:list-item -->\n' +
+        '<li>b</li>\n' +
+        '<!-- /wp:list-item --></ul>\n' +
+        '<!-- /wp:list -->',
+    );
   });
 
   it('順序付きリストは ordered 属性付き', () => {
     const out = markdownToBlocks('1. one\n2. two');
     expect(out).toContain('<!-- wp:list {"ordered":true} -->');
-    expect(out).toContain('<ol class="wp-block-list">');
+    expect(out).toContain('<ol class="wp-block-list"><!-- wp:list-item -->');
+    expect(out).toContain('<li>one</li>');
+    expect(out).toContain('<!-- /wp:list-item --></ol>');
   });
 
   it('引用ブロックを core/quote で出力', () => {
