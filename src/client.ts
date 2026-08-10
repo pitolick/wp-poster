@@ -23,7 +23,15 @@ const TERM_SEARCH_PER_PAGE = 100;
  *
  * WP はこの場合 `{"code":"term_exists","data":{"status":400,"term_id":421}}` の形で
  * **既存 term の ID を本文に載せてくる**ので、作成失敗を回復できる。
- * 形が違う／別のエラーなら `undefined` を返し、呼び出し元にそのまま投げ直させる。
+ * 受け付けるのは `WPRequestError` かつ status 400 かつ `code === 'term_exists'` で、
+ * `data.term_id` が数値のときだけ。形が違う／別のエラーなら `undefined` を返し、
+ * 呼び出し元にそのまま投げ直させる（エラーを握り潰さない）。
+ *
+ * **パッケージの公開 API ではない**（`src/index.ts` は再エクスポートせず、
+ * `package.json#exports` も `.` と `./draft` だけなので利用者からは到達できない）。
+ * `export` しているのは単体テストから直接叩くためで、同ファイルの
+ * `buildContentDisposition` と同じ扱い。したがって公開仕様（README.md /
+ * `src/types.ts`）には載せず、仕様はこの TSDoc を正とする。
  */
 export function termExistsId(err: unknown): number | undefined {
   if (!(err instanceof WPRequestError) || err.status !== 400) return undefined;
