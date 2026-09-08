@@ -8,7 +8,7 @@ import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
 import { WPPosterError } from './errors.js';
 import { sanitizeSlug } from './slug.js';
 
-export const WP_POSTER_VERSION = '0.5.3';
+export const WP_POSTER_VERSION = '0.5.4';
 
 export type {
   PostInput,
