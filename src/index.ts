@@ -2,13 +2,14 @@ import { WPClient } from './client.js';
 import { markdownToBlocks } from './markdown.js';
 import { uploadFeaturedImage } from './images.js';
 import { buildMetaPayload } from './meta.js';
+import { resolveContentImages, type ResolvedContentImage } from './content-images.js';
 import type { CacheBustHook } from './cache-bust.js';
 import { noopCacheBust } from './cache-bust.js';
 import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
 import { WPPosterError } from './errors.js';
 import { sanitizeSlug } from './slug.js';
 
-export const WP_POSTER_VERSION = '0.6.0';
+export const WP_POSTER_VERSION = '0.7.0';
 
 export type {
   PostInput,
@@ -26,14 +27,37 @@ export { WPPosterError, WPRequestError } from './errors.js';
 export { markdownToBlocks } from './markdown.js';
 export { extractMarkers, restoreMarkers } from './transformers.js';
 export { downloadImage, uploadFeaturedImage } from './images.js';
+export {
+  parseImageMarkdown,
+  formatImageMarkdown,
+  renderImageBlock,
+  DEFAULT_IMAGE_SIZE,
+} from './image-markdown.js';
+export type { ContentImage } from './image-markdown.js';
+export { resolveContentImages } from './content-images.js';
+export type {
+  ResolveContentImagesOptions,
+  ResolveContentImagesResult,
+  ResolvedContentImage,
+  ContentImageAction,
+} from './content-images.js';
 export type { CacheBustHook } from './cache-bust.js';
 export { sanitizeSlug } from './slug.js';
 export { normalizeTitleSeparators } from './title.js';
 
 export interface PublishOptions {
   cacheBust?: CacheBustHook;
-  /** featuredImage ダウンロード時に使う fetch（未指定なら設定の fetch） */
+  /** featuredImage・本文の画像のダウンロードに使う fetch（未指定なら設定の fetch） */
   fetch?: typeof fetch;
+  /**
+   * 本文の `id` の無い画像をメディアライブラリに解決するか（既定 `true`）。
+   * `false` なら Markdown の src のまま画像ブロックにする（外部 URL への直リンク）。
+   */
+  resolveContentImages?: boolean;
+  /** 本文の画像を http(s) でないパスで書いたときの基準ディレクトリ（`resolveContentImages` に渡す） */
+  contentImagesBaseDir?: string;
+  /** 本文の画像 1 枚ごとの判断（再利用 / アップロード / 見送り）を受け取る。ログに残す用途 */
+  onContentImage?: (image: ResolvedContentImage) => void;
 }
 
 /** 既存投稿を更新するときに `status` を送るかどうか。 */
@@ -56,6 +80,15 @@ export interface UpsertResult {
   id: number;
   created: boolean;
   link?: string;
+  /** 本文の画像の判断（再利用 / アップロード / 見送り）。解決した画像が無ければ含まない */
+  contentImages?: ResolvedContentImage[];
+}
+
+interface BuiltPayload {
+  payload: Record<string, unknown>;
+  contentImages: ResolvedContentImage[];
+  /** 本文の画像のうち、投稿確定後に親を設定するメディア（新たに上げたもの＋親が未設定の再利用） */
+  unattachedContentMediaIds: number[];
 }
 
 export class WPPoster {
@@ -69,9 +102,9 @@ export class WPPoster {
 
   /** 新規投稿 */
   async publish(input: PostInput, options: PublishOptions = {}): Promise<WPPostResponse> {
-    const payload = await this.buildPayload(input, options);
-    const post = await this.client.createPost(payload);
-    await this.attachFeaturedMedia(payload, post.id);
+    const built = await this.buildPayload(input, options);
+    const post = await this.client.createPost(built.payload);
+    await this.attachMedia(built, post.id);
     await (options.cacheBust ?? noopCacheBust)(post);
     return post;
   }
@@ -82,9 +115,9 @@ export class WPPoster {
     input: Partial<PostInput>,
     options: PublishOptions = {},
   ): Promise<WPPostResponse> {
-    const payload = await this.buildPayload(input, options);
-    const post = await this.client.updatePost(id, payload);
-    await this.attachFeaturedMedia(payload, post.id);
+    const built = await this.buildPayload(input, options);
+    const post = await this.client.updatePost(id, built.payload);
+    await this.attachMedia(built, post.id);
     await (options.cacheBust ?? noopCacheBust)(post);
     return post;
   }
@@ -116,7 +149,8 @@ export class WPPoster {
       throw new WPPosterError('upsertBySlug requires a non-empty slug after normalization');
     }
     const existing = await this.client.findBySlug(postType, slug);
-    const payload = await this.buildPayload({ ...input, slug }, options);
+    const built = await this.buildPayload({ ...input, slug }, options);
+    const { payload } = built;
 
     let post: WPPostResponse;
     let created: boolean;
@@ -129,31 +163,42 @@ export class WPPoster {
       post = await this.client.createAt(postType, payload);
       created = true;
     }
-    await this.attachFeaturedMedia(payload, post.id);
+    await this.attachMedia(built, post.id);
     await (options.cacheBust ?? noopCacheBust)(post);
-    return { id: post.id, created, link: post.link };
+    return {
+      id: post.id,
+      created,
+      link: post.link,
+      ...(built.contentImages.length ? { contentImages: built.contentImages } : {}),
+    };
   }
 
   /**
-   * buildPayload でアップロードした featured メディアに親投稿を後追いで紐付ける。
-   * アイキャッチはバイナリ upload の時点で投稿 ID が未確定のため、投稿確定後に
-   * メディアの `post` を設定しないと親削除時に孤児メディアとして残ってしまう。
+   * buildPayload でアップロードしたメディア（アイキャッチ・本文の画像）に親投稿を後追いで紐付ける。
+   * バイナリ upload の時点では投稿 ID が未確定のため、投稿確定後にメディアの `post` を
+   * 設定しないと親削除時に孤児メディアとして残ってしまう。
+   *
+   * 本文の画像は**新たにアップロードしたものと、親が未設定の再利用メディアだけ**。親が付いている
+   * 再利用メディアは別の投稿の画像なので、付け替えると元の投稿から外れてしまう。親の未設定を
+   * 拾うのは、前回の投稿で親の設定だけが失敗した画像を再投稿で回復するため。
    */
-  private async attachFeaturedMedia(
-    payload: Record<string, unknown>,
-    postId: number,
-  ): Promise<void> {
-    const mediaId = payload.featured_media;
+  private async attachMedia(built: BuiltPayload, postId: number): Promise<void> {
+    const mediaId = built.payload.featured_media;
     if (typeof mediaId === 'number' && mediaId > 0) {
       await this.client.updateAt('media', mediaId, { post: postId });
+    }
+    for (const id of built.unattachedContentMediaIds) {
+      await this.client.updateAt('media', id, { post: postId });
     }
   }
 
   private async buildPayload(
     input: Partial<PostInput>,
     options: PublishOptions,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<BuiltPayload> {
     const payload: Record<string, unknown> = {};
+    let contentImages: ResolvedContentImage[] = [];
+    let unattachedContentMediaIds: number[] = [];
 
     if (input.title !== undefined) payload.title = input.title;
     if (input.slug !== undefined) payload.slug = input.slug;
@@ -163,7 +208,18 @@ export class WPPoster {
     if (input.author !== undefined) payload.author = input.author;
 
     if (input.content !== undefined) {
-      payload.content = markdownToBlocks(input.content, {
+      let content = input.content;
+      if (options.resolveContentImages !== false) {
+        const resolved = await resolveContentImages(content, this.client, {
+          fetch: options.fetch ?? this.fetchFn,
+          baseDir: options.contentImagesBaseDir,
+        });
+        content = resolved.markdown;
+        contentImages = resolved.images;
+        unattachedContentMediaIds = resolved.unattachedMediaIds;
+        for (const image of contentImages) options.onContentImage?.(image);
+      }
+      payload.content = markdownToBlocks(content, {
         markerTransformers: input.markerTransformers,
       });
     }
@@ -188,6 +244,6 @@ export class WPPoster {
       payload.meta = buildMetaPayload(input.meta);
     }
 
-    return payload;
+    return { payload, contentImages, unattachedContentMediaIds };
   }
 }

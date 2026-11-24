@@ -192,11 +192,17 @@ export class WPClient {
       body: opts.data,
     });
 
-    // alt / caption / post の更新は別エンドポイント
+    // title / alt / caption / post の更新は別エンドポイント
     // （生バイナリ upload では JSON フィールドを同送できないため後続の JSON POST で設定する）
     // 空文字 alt/caption や post=0 も明示指定として送れるよう truthy ではなく undefined 判定にする
-    if (opts.alt !== undefined || opts.caption !== undefined || opts.post !== undefined) {
+    if (
+      opts.title !== undefined ||
+      opts.alt !== undefined ||
+      opts.caption !== undefined ||
+      opts.post !== undefined
+    ) {
       await this.postJson(`/wp-json/wp/v2/media/${media.id}`, {
+        ...(opts.title !== undefined ? { title: opts.title } : {}),
         ...(opts.alt !== undefined ? { alt_text: opts.alt } : {}),
         ...(opts.caption !== undefined ? { caption: opts.caption } : {}),
         ...(opts.post !== undefined ? { post: opts.post } : {}),

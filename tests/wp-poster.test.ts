@@ -490,3 +490,77 @@ describe('WPPoster.upsertBySlug', () => {
     expect(findUrl).toContain('slug=foo-bar'); // 正規化後の slug で検索している
   });
 });
+
+describe('WPPoster: 本文の画像', () => {
+  function respond() {
+    return makeRecordingFetch((c) => {
+      if (c.url === 'https://cdn/p.jpg')
+        return new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        });
+      if (c.url.includes('/wp/v2/media?') && c.method === 'GET') return jsonRes([]);
+      if (c.url.endsWith('/wp/v2/media') && c.method === 'POST')
+        return jsonRes(
+          {
+            id: 55,
+            source_url: 'https://e/u/p.jpg',
+            media_type: 'image',
+            media_details: { sizes: { large: { source_url: 'https://e/u/p-724x1024.jpg' } } },
+          },
+          201,
+        );
+      if (/\/wp\/v2\/media\/55$/.test(c.url) && c.method === 'POST')
+        return jsonRes({ id: 55, source_url: 'https://e/u/p.jpg', media_type: 'image' });
+      if (c.url.includes('/wp/v2/posts?slug=')) return jsonRes([]);
+      if (c.url.endsWith('/wp/v2/posts') && c.method === 'POST')
+        return jsonRes(
+          { id: 8, link: 'https://e/p/8', status: 'draft', date: 'd', title: { rendered: '' } },
+          201,
+        );
+      return jsonRes({}, 404);
+    });
+  }
+
+  it('id の無い画像をアップロードして画像ブロックに id を入れ、投稿確定後に親を設定する', async () => {
+    const { fetch: f, calls } = respond();
+    const seen: string[] = [];
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+    const res = await poster.upsertBySlug(
+      'posts',
+      { title: 't', slug: 's', content: '![ポスター](https://cdn/p.jpg)' },
+      { onContentImage: (i) => seen.push(i.action) },
+    );
+
+    const post = calls.find((c) => c.url.endsWith('/wp/v2/posts') && c.method === 'POST')!;
+    const content = (post.body as { content: string }).content;
+    expect(content).toContain(
+      '<!-- wp:image {"id":55,"sizeSlug":"large","linkDestination":"none"} -->',
+    );
+    expect(content).toContain(
+      'src="https://e/u/p-724x1024.jpg" alt="ポスター" class="wp-image-55"',
+    );
+    expect(seen).toEqual(['uploaded']);
+    expect(res.contentImages).toEqual([expect.objectContaining({ action: 'uploaded', id: 55 })]);
+    // アップロード時のメタ設定（title/alt）とは別に、投稿確定後に親を設定する
+    const parentSet = calls.filter(
+      (c) => /\/wp\/v2\/media\/55$/.test(c.url) && (c.body as { post?: number }).post === 8,
+    );
+    expect(parentSet).toHaveLength(1);
+  });
+
+  it('resolveContentImages: false なら外部 URL のまま出し、メディアに触らない', async () => {
+    const { fetch: f, calls } = respond();
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+    const res = await poster.publish(
+      { title: 't', content: '![ポスター](https://cdn/p.jpg)' },
+      { resolveContentImages: false },
+    );
+    expect(res.id).toBe(8);
+    expect(calls.some((c) => c.url.includes('/wp/v2/media'))).toBe(false);
+    const post = calls.find((c) => c.url.endsWith('/wp/v2/posts') && c.method === 'POST')!;
+    expect((post.body as { content: string }).content).toContain(
+      '<img src="https://cdn/p.jpg" alt="ポスター"/>',
+    );
+  });
+});
