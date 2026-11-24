@@ -564,3 +564,46 @@ describe('WPPoster: 本文の画像', () => {
     );
   });
 });
+
+describe('WPPoster: 引用の中の画像（解決から出力まで）', () => {
+  it('画像の直後に引用元が続く引用でも、id 付きの画像ブロックと引用元の段落を出す', async () => {
+    const { fetch: f, calls } = makeRecordingFetch((c) => {
+      if (c.url === 'https://cdn/p.jpg')
+        return new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        });
+      if (c.url.includes('/wp/v2/media?') && c.method === 'GET') return jsonRes([]);
+      if (c.url.endsWith('/wp/v2/media') && c.method === 'POST')
+        return jsonRes(
+          {
+            id: 55,
+            source_url: 'https://e/u/p.jpg',
+            media_type: 'image',
+            media_details: { sizes: {} },
+          },
+          201,
+        );
+      if (/\/wp\/v2\/media\/55$/.test(c.url))
+        return jsonRes({ id: 55, source_url: 'https://e/u/p.jpg', media_type: 'image' });
+      if (c.url.endsWith('/wp/v2/posts') && c.method === 'POST')
+        return jsonRes(
+          { id: 8, link: '', status: 'draft', date: 'd', title: { rendered: '' } },
+          201,
+        );
+      return jsonRes({}, 404);
+    });
+    const poster = new WPPoster({ url: 'https://e', username: 'u', appPassword: 'p', fetch: f });
+    await poster.publish({
+      title: 't',
+      content: '> ![ポスター](https://cdn/p.jpg)\n> 引用元：公式',
+    });
+    const post = calls.find((c) => c.url.endsWith('/wp/v2/posts') && c.method === 'POST')!;
+    const content = (post.body as { content: string }).content;
+    expect(content).toContain(
+      '<!-- wp:image {"id":55,"sizeSlug":"full","linkDestination":"none"} -->',
+    );
+    expect(content).toContain('<p>引用元：公式</p>');
+    expect(content).not.toContain('{id=');
+  });
+});

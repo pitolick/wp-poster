@@ -62,6 +62,64 @@ interface MediaDetails {
 
 type MediaWithSizes = WPMedia & { media_details?: MediaDetails; post?: number | null };
 
+/**
+ * 行頭の引用記号（`>`。入れ子・記号の前の空白 3 個まで）を外し、中身の字下げの桁数を返す。
+ *
+ * タブは 4 の倍数の桁まで進む。記号の直後のタブは 1 桁だけを記号の一部として消費し、残りの桁は
+ * 中身の字下げに数える（CommonMark・marked と同じ）。例えば `>\t  x` は中身が 4 桁の字下げ＝コード。
+ */
+export function splitBlockquote(line: string): {
+  prefix: string;
+  content: string;
+  /** 引用の深さ（0 は引用の外） */
+  depth: number;
+  /** 中身の先頭の字下げの桁数 */
+  indent: number;
+} {
+  let i = 0;
+  let col = 0;
+  let depth = 0;
+  let pending = 0; // 記号の直後のタブのうち、記号が消費しなかった桁数
+  for (;;) {
+    let j = i;
+    let c = col;
+    while (j - i < 3 && line[j] === ' ') {
+      j++;
+      c++;
+    }
+    if (line[j] !== '>') break;
+    j++;
+    c++;
+    depth++;
+    pending = 0;
+    if (line[j] === ' ') {
+      j++;
+      c++;
+    } else if (line[j] === '\t') {
+      const width = 4 - (c % 4);
+      j++;
+      c += width;
+      pending = width - 1;
+    }
+    i = j;
+    col = c;
+  }
+  const content = line.slice(i);
+  let indent = pending;
+  let c = col;
+  for (const ch of content) {
+    if (ch === ' ') {
+      indent++;
+      c++;
+    } else if (ch === '\t') {
+      const width = 4 - (c % 4);
+      indent += width;
+      c += width;
+    } else break;
+  }
+  return { prefix: line.slice(0, i), content, depth, indent };
+}
+
 function isRemote(src: string): boolean {
   return /^https?:\/\//i.test(src);
 }
@@ -123,31 +181,39 @@ export async function resolveContentImages(
   const unattachedMediaIds: number[] = [];
   // 同じ画像が本文に 2 回出てきても 1 回だけ照合・アップロードする
   const cache = new Map<string, MediaWithSizes>();
-  // 開いているコードフェンス（文字と長さ）。閉じるのは同じ文字で同じ長さ以上のフェンスだけ
-  let fence: { char: string; length: number } | null = null;
+  // 開いているコードフェンス（文字・長さ・開いた引用の深さ）。閉じるのは同じ文字で同じ長さ以上のフェンス。
+  // 引用の中で開いたフェンスは、その引用が終わった時点でも閉じる（CommonMark と同じ）
+  let fence: { char: string; length: number; depth: number } | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     // 引用（`> `、入れ子の `> > ` も）の中の画像も解決する。記号を外した中身で判定し、書き戻すときに付け直す。
     // 作品ごとのポスターを「引用＋画像＋引用元」で見せる書き方（フィルムログの予習・復習記事）がこれに当たる
-    const quoteMarker = /^(?: {0,3}>[ \t]?)+/.exec(lines[i]);
-    const prefix = quoteMarker ? quoteMarker[0] : '';
-    const line = lines[i].slice(prefix.length);
-    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (fenceMatch) {
-      const marker = fenceMatch[1];
-      if (!fence) {
-        fence = { char: marker[0], length: marker.length };
+    const quote = splitBlockquote(lines[i]);
+    const line = quote.content;
+
+    if (fence) {
+      if (fence.depth === 0) {
+        // 引用の外で開いたフェンスの中では `> ` も中身の文字。閉じフェンスは元の行で判定する
+        const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(lines[i]);
+        if (close && close[1][0] === fence.char && close[1].length >= fence.length) fence = null;
         continue;
       }
-      if (marker[0] === fence.char && marker.length >= fence.length && line.trim() === marker) {
+      if (quote.depth < fence.depth) {
+        // 引用が終わったので、引用の中で開いたフェンスも終わる。この行は通常どおり扱う
         fence = null;
+      } else {
+        const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+        if (close && close[1][0] === fence.char && close[1].length >= fence.length) fence = null;
         continue;
       }
     }
-    if (fence) continue;
-    // 4 文字以上の字下げはインデントのコードブロック。画像として扱わない。タブは次の 4 の倍数の
-    // 桁まで進むので、空白 3 個以内の後のタブも 4 文字以上の字下げになる
-    if (/^(?: {4}| {0,3}\t)/.test(line)) continue;
+    const open = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (open) {
+      fence = { char: open[1][0], length: open[1].length, depth: quote.depth };
+      continue;
+    }
+    // 4 桁以上の字下げはインデントのコードブロック。画像として扱わない（タブは 4 の倍数の桁まで進む）
+    if (quote.indent >= 4) continue;
     const image = parseImageMarkdown(line);
     if (!image || image.id !== undefined) continue;
 
@@ -201,7 +267,7 @@ export async function resolveContentImages(
     const picked = pickSize(media, wanted);
     const resolved: ContentImage = { ...image, id: media.id, src: picked.src, size: picked.size };
     // 置換文字列だと caption の `$&` などが置換記号として展開されるので、関数で渡す
-    lines[i] = prefix + line.replace(line.trim(), () => formatImageMarkdown(resolved));
+    lines[i] = quote.prefix + line.replace(line.trim(), () => formatImageMarkdown(resolved));
     images.push({
       source: image.src,
       action,

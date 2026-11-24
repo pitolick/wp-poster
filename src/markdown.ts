@@ -54,6 +54,30 @@ function renderParagraph(t: Tokens.Paragraph): string {
   // alt / src の属性値のエスケープは renderImageBlock が行う
   const image = parseImageMarkdown(t.raw);
   if (image) return renderImageBlock(image);
+  // 画像の行の直後に空行を挟まず文章が続くと（`> ![…](…){id=…}` の次の行に `> 引用元：…` など）
+  // 1 つの段落になる。画像の行を画像ブロックに、残りの行を段落に分ける。分けないと `{id=…}` が
+  // 本文に文字として出てしまう
+  const lines = t.raw.replace(/\n+$/, '').split('\n');
+  if (lines.length > 1 && lines.some((l) => parseImageMarkdown(l))) {
+    const blocks: string[] = [];
+    let buf: string[] = [];
+    const flush = () => {
+      if (buf.length)
+        blocks.push(wrapBlock('paragraph', `<p>${renderInlineText(buf.join('\n'))}</p>`));
+      buf = [];
+    };
+    for (const l of lines) {
+      const img = parseImageMarkdown(l);
+      if (img) {
+        flush();
+        blocks.push(renderImageBlock(img));
+      } else {
+        buf.push(l);
+      }
+    }
+    flush();
+    return blocks.join('\n\n');
+  }
   // 参照形式（`![a][ref]`）など、上の記法に当たらない単独の画像も従来どおり core/image にする
   if (t.tokens && t.tokens.length === 1 && t.tokens[0].type === 'image') {
     const img = t.tokens[0] as Tokens.Image;

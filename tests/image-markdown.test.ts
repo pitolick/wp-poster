@@ -144,3 +144,23 @@ describe('markdownToBlocks: 引用の中の画像', () => {
     expect(out.startsWith('<!-- wp:quote -->')).toBe(true);
   });
 });
+
+describe('markdownToBlocks: 画像の行と文章が同じ段落になったとき（レビュー指摘）', () => {
+  it('引用の中で画像の直後に引用元が続いても、画像ブロックと段落に分ける', () => {
+    const out = markdownToBlocks(
+      '> ![ポスター](https://e/p.jpg){id=450 size=full}\n> 引用元：公式',
+    );
+    expect(out).toContain(
+      '<!-- wp:image {"id":450,"sizeSlug":"full","linkDestination":"none"} -->',
+    );
+    expect(out).toContain('<p>引用元：公式</p>');
+    expect(out).not.toContain('{id=');
+  });
+
+  it('文章 → 画像 → 文章の順でも分ける', () => {
+    const out = markdownToBlocks('前\n![a](https://e/a.jpg){id=1}\n後');
+    const order = ['<p>前</p>', 'wp-image-1', '<p>後</p>'].map((s) => out.indexOf(s));
+    expect(order.every((n) => n >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
