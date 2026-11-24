@@ -111,17 +111,53 @@ console.log(post.link);
 
 ### `poster.upsertBySlug(postType, input, options?)`
 
-`input.slug` を自然キーに、一致する投稿があれば更新（`slug` は再送しない）、無ければ作成する。記事（`posts`）とカスタム投稿タイプ（`affilicard_product` など）を共通で扱う。戻り値は `{ id, created, link }`。
+`input.slug` を自然キーに、一致する投稿があれば更新（`slug` は再送しない）、無ければ作成する。記事（`posts`）とカスタム投稿タイプ（`affilicard_product` など）を共通で扱う。戻り値は `{ id, created, link, contentImages? }`（`contentImages` は本文の画像を解決したときだけ。後述）。
 
 | オプション | 既定 | 説明 |
 | --- | --- | --- |
 | `statusOnUpdate` | `'send'` | 既存投稿を**更新するとき**に `input.status` を送るか。`'omit'` にすると送らず、WP 上の公開状態を保つ（draft の `status: draft` で公開記事を下書きに戻す事故を防ぐ）。新規作成では常に送る |
-| `cacheBust` / `fetch` | — | `publish` / `update` と同じ |
+| `cacheBust` / `fetch` / `resolveContentImages` / `contentImagesBaseDir` / `onContentImage` | — | `publish` / `update` と同じ（本文の画像は後述） |
 
 ```ts
 // 公開状態は WP 管理画面で決める運用（再投稿で下書きに戻さない）
 await poster.upsertBySlug('posts', input, { statusOnUpdate: 'omit' });
 ```
+
+### 本文の画像
+
+本文の画像は、単独行で次のように書く。`{…}` は省略できる。
+
+```md
+![alt](src "キャプション"){id=712 size=large width=852px height=auto}
+```
+
+| 属性 | 意味 | 既定 |
+| --- | --- | --- |
+| `id` | メディア ID。あると `class="wp-image-N"` が付き、ブロックエディタで正しい画像ブロックとして扱える（差し替え・画面幅に合わせた画像の自動付与） | なし |
+| `size` | `sizeSlug`（`large` / `full` など） | `id` があれば `large` |
+| `width` / `height` | 表示サイズ（エディタの「サイズ変更」） | なし |
+
+`publish` / `update` / `upsertBySlug` は、**`id` の無い画像を投稿前にメディアライブラリへ解決する**。
+
+1. 元の URL の SHA-256（リポジトリ内のファイルなら中身の SHA-256）の先頭 12 桁を「鍵」にする
+2. 鍵入りのタイトルを持つメディアがあれば再利用する。無ければ `<元の名前>-<鍵>.<拡張子>` でアップロードする（**何度投稿してもメディアは 1 枚のまま**）
+3. `id`・サイズ別の URL・`size` を埋めてから画像ブロックにする。新たにアップロードしたメディアには、投稿確定後に親投稿を設定する
+
+| オプション | 既定 | 説明 |
+| --- | --- | --- |
+| `resolveContentImages` | `true` | `false` なら解決せず、Markdown の src のまま画像ブロックにする（外部 URL への直リンク） |
+| `contentImagesBaseDir` | なし | http(s) でない src（リポジトリ内のファイル）を読む基準ディレクトリ。未指定ならそのような画像は解決しない |
+| `onContentImage` | なし | 1 枚ごとの判断（`reused` / `uploaded` / `skipped`）を受け取る。**ログに残すこと**（無言でアップロードに倒れると、メディアが増えてから気づくことになる） |
+
+同じ URL のまま中身が差し替わる画像は、鍵が変わらないので古いメディアが使われ続ける。その場合は別の URL（またはファイル）にする。
+
+各サイトの独自の変換器からも使えるよう、次を公開している。
+
+| 関数 | 用途 |
+| --- | --- |
+| `parseImageMarkdown(line)` / `formatImageMarkdown(image)` | 記法の解析と書き出し（WP → Markdown の逆変換にも使う） |
+| `renderImageBlock(image)` | 画像ブロックの出力。ブロックエディタが保存する形と同じ（Gutenberg のブロック検証で、無効にならず保存し直しても変わらないことを確認済み） |
+| `resolveContentImages(markdown, client, options)` | 上の「探して無ければ上げる」だけを行う |
 
 ### マーカートランスフォーマー
 
@@ -164,7 +200,7 @@ Gutenberg のブロックバリデーションは寛容ではなく、`responsiv
 | `> blockquote` | `core/quote` |
 | ` ```code``` ` | `core/code` |
 | `---` | `core/separator` |
-| `![alt](url)` 単独段落 | `core/image` |
+| `![alt](src "キャプション"){id=… size=…}` 単独段落 | `core/image`（[本文の画像](#本文の画像)） |
 | 上記以外 | `core/html` フォールバック |
 
 ## Markdown ドラフトファイルからの投稿

@@ -2,6 +2,7 @@ import { marked } from 'marked';
 import type { Tokens, Token } from 'marked';
 import type { MarkerTransformer } from './types.js';
 import { extractMarkers, restoreMarkers } from './transformers.js';
+import { parseImageMarkdown, renderImageBlock } from './image-markdown.js';
 
 export interface MarkdownOptions {
   markerTransformers?: MarkerTransformer[];
@@ -49,16 +50,10 @@ function renderHeading(t: Tokens.Heading): string {
 }
 
 function renderParagraph(t: Tokens.Paragraph): string {
-  // 単独の画像トークンだけの段落は core/image に変換
-  if (t.tokens && t.tokens.length === 1 && t.tokens[0].type === 'image') {
-    const img = t.tokens[0] as Tokens.Image;
-    // href / alt は属性値なので必ずエスケープする（alt に " や < を含む日本語ドラフトで
-    // 属性が破断し Gutenberg がブロックを無効化するのを防ぐ）。
-    return wrapBlock(
-      'image',
-      `<figure class="wp-block-image"><img src="${escapeHtml(img.href)}" alt="${escapeHtml(img.text ?? '')}"/></figure>`,
-    );
-  }
+  // 単独行の画像は core/image に変換する（`{id=… size=…}` の属性も含めて解析する）。
+  // alt / src の属性値のエスケープは renderImageBlock が行う
+  const image = parseImageMarkdown(t.raw);
+  if (image) return renderImageBlock(image);
   const inline = renderInlineText(t.text);
   return wrapBlock('paragraph', `<p>${inline}</p>`);
 }

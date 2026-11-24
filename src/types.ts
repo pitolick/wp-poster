@@ -112,6 +112,10 @@ export interface WPMedia {
   id: number;
   source_url: string;
   media_type: string;
+  /** サイズ別の URL（`sizes.large.source_url` など）。`_fields` で絞ると含まれないことがある */
+  media_details?: {
+    sizes?: Record<string, { source_url: string; width?: number; height?: number }>;
+  };
 }
 
 /** `WPClient.uploadMedia` の引数 */
@@ -119,6 +123,8 @@ export interface UploadMediaOptions {
   data: Uint8Array;
   filename: string;
   mimeType: string;
+  /** メディアのタイトル。未指定だと WP はファイル名か画像の埋め込み情報（IPTC）から決める */
+  title?: string;
   alt?: string;
   caption?: string;
   /** 親投稿 ID。設定するとメディアが投稿に紐付き、GET /media?parent= で検出・後片付けできる */
