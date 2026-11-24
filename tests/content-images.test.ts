@@ -240,7 +240,7 @@ describe('resolveContentImages: コード・置換記号・親の未設定（レ
 
   it('4 文字以上の字下げ（インデントのコードブロック）は画像として扱わない', async () => {
     const wp = fakeWP();
-    const md = `例:\n\n    ![a](${SRC})\n\t![b](${SRC})`;
+    const md = `例:\n\n    ![a](${SRC})\n\t![b](${SRC})\n  \t![c](${SRC})\n   \t![d](${SRC})`;
     const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
     expect(res.markdown).toBe(md);
     expect(wp.calls).toEqual([]);

@@ -141,8 +141,9 @@ export async function resolveContentImages(
       }
     }
     if (fence) continue;
-    // 4 文字以上の字下げ（タブ含む）はインデントのコードブロック。画像として扱わない
-    if (/^(?: {4}|\t)/.test(line)) continue;
+    // 4 文字以上の字下げはインデントのコードブロック。画像として扱わない。タブは次の 4 の倍数の
+    // 桁まで進むので、空白 3 個以内の後のタブも 4 文字以上の字下げになる
+    if (/^(?: {4}| {0,3}\t)/.test(line)) continue;
     const image = parseImageMarkdown(line);
     if (!image || image.id !== undefined) continue;
 
