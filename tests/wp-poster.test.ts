@@ -447,6 +447,17 @@ describe('WPPoster.upsertBySlug', () => {
       expect(sentBodyOf(fetchMock).status).toBe('draft');
     });
 
+    it('null も既定値に置き換えず、通信する前にエラーにする', async () => {
+      const fetchMock = vi.fn();
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      await expect(
+        poster.upsertBySlug('posts', input, {
+          statusOnUpdate: null as unknown as 'omit',
+        }),
+      ).rejects.toThrow(/statusOnUpdate/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('不正な値は通信する前にエラーにする（JS からの綴り間違いを黙って send 扱いにしない）', async () => {
       const fetchMock = vi.fn();
       const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });

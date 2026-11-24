@@ -100,7 +100,8 @@ export class WPPoster {
     input: PostInput,
     options: UpsertOptions = {},
   ): Promise<UpsertResult> {
-    const statusOnUpdate = options.statusOnUpdate ?? 'send';
+    // `??` だと null も既定値に化けて検証をすり抜けるので、既定値は undefined のときだけ
+    const statusOnUpdate = options.statusOnUpdate === undefined ? 'send' : options.statusOnUpdate;
     // JS からの呼び出し（型検査が効かない）での綴り間違いを黙って 'send' 扱いにしない
     if (!STATUS_ON_UPDATE_VALUES.includes(statusOnUpdate)) {
       throw new WPPosterError(
