@@ -183,3 +183,27 @@ describe('markdownToBlocks: インラインコードとコードの外の画像�
     expect(out).toContain('<p>引用元</p>');
   });
 });
+
+describe('markdownToBlocks: 改行をまたぐリンク・強調の中の画像（レビュー指摘）', () => {
+  it('リンクの中の画像の行は分けず、リンクを保つ', () => {
+    const out = markdownToBlocks('[リンク\n![a](https://e/a.jpg)\n説明](https://example.com/)');
+    expect(out).not.toContain('wp:image');
+    expect(out).toContain('<a href="https://example.com/">');
+    expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
+  });
+
+  it('強調の中の画像の行も分けない', () => {
+    const out = markdownToBlocks('**太字\n![a](https://e/a.jpg)\n続き**');
+    expect(out).not.toContain('wp:image');
+    expect(out).toContain('<strong>');
+  });
+
+  it('リンクと同じ段落でも、リンクの外の画像の行は分ける', () => {
+    const out = markdownToBlocks(
+      '[前\n後](https://example.com/)\n![a](https://e/a.jpg){id=1}\n引用元',
+    );
+    expect(out).toContain('<!-- wp:image {"id":1,"sizeSlug":"large","linkDestination":"none"} -->');
+    expect(out).toContain('<a href="https://example.com/">');
+    expect(out).toContain('<p>引用元</p>');
+  });
+});
