@@ -207,3 +207,22 @@ describe('markdownToBlocks: 改行をまたぐリンク・強調の中の画像�
     expect(out).toContain('<p>引用元</p>');
   });
 });
+
+describe('markdownToBlocks: インラインの HTML 要素の中の画像（レビュー指摘）', () => {
+  it('開始タグと終了タグの間の画像の行は分けない', () => {
+    const out = markdownToBlocks('前 <span>\n![a](https://e/a.jpg)\n</span> 続き', {});
+    expect(out).not.toContain('wp:image');
+    expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
+  });
+
+  it('HTML 要素の外の画像の行は分ける', () => {
+    const out = markdownToBlocks('<span>前</span>\n![a](https://e/a.jpg){id=1}\n引用元');
+    expect(out).toContain('<!-- wp:image {"id":1,"sizeSlug":"large","linkDestination":"none"} -->');
+    expect(out).toContain('<p>引用元</p>');
+  });
+
+  it('<br> のような終了タグの無い要素では守らない', () => {
+    const out = markdownToBlocks('前<br>\n![a](https://e/a.jpg){id=1}\n引用元');
+    expect(out).toContain('wp-image-1');
+  });
+});

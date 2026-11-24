@@ -97,26 +97,65 @@ function isMultilineInline(tk: Token): boolean {
 }
 
 /**
- * 段落の本文のうち、改行をまたぐインラインの要素（インラインコード・リンク・強調など）が触れる行の番号を
- * 返す。これらの行を画像として分けると、コードの中身が画像ブロックに化けたり、リンクが壊れて記号が本文に
+ * 段落の本文のうち、改行をまたぐインラインの要素（インラインコード・リンク・強調・インラインの HTML
+ * 要素など）が触れる行の番号を返す。これらの行を画像として分けると、コードの中身が画像ブロックに化けたり、リンクが壊れて記号が本文に
  * 残ったりする。インラインのトークンの raw を順につなぐと本文になるので、その位置から行を割り出す。
  * つながらない（位置を特定できない）ときは、安全側に倒して全行を返す。
  */
 function linesInMultilineInline(text: string, tokens: Token[] | undefined): Set<number> {
   const lineOf = (offset: number) => text.slice(0, offset).split('\n').length - 1;
   const list = tokens ?? [];
-  if (!list.some(isMultilineInline)) return new Set();
+  if (!list.some((tk) => isMultilineInline(tk) || tk.type === 'html')) return new Set();
   if (list.map((tk) => tk.raw).join('') !== text) return new Set(text.split('\n').map((_, i) => i));
   const lines = new Set<number>();
+  const protect = (from: number, to: number) => {
+    for (let i = lineOf(from); i <= lineOf(to); i++) lines.add(i);
+  };
+  // インラインの HTML は開始タグと終了タグが別々のトークンになるので、対応するタグの間を守る
+  const openTags: Array<{ tag: string; start: number }> = [];
   let offset = 0;
   for (const tk of list) {
     const start = offset;
     offset += tk.raw.length;
-    if (!isMultilineInline(tk)) continue;
-    for (let i = lineOf(start); i <= lineOf(offset); i++) lines.add(i);
+    if (tk.type === 'html') {
+      const m = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)\b[^>]*?(\/?)>$/.exec(tk.raw.trim());
+      if (m) {
+        const [, closing, name, selfClosing] = m;
+        const tag = name.toLowerCase();
+        if (closing) {
+          const at = openTags.map((o) => o.tag).lastIndexOf(tag);
+          if (at >= 0) {
+            protect(openTags[at].start, offset);
+            openTags.length = at;
+          }
+        } else if (!selfClosing && !VOID_ELEMENTS.has(tag)) {
+          openTags.push({ tag, start });
+        }
+      }
+    }
+    if (isMultilineInline(tk)) protect(start, offset);
   }
+  // 閉じられていないタグは段落の終わりまで続くものとして守る
+  for (const o of openTags) protect(o.start, text.length);
   return lines;
 }
+
+/** 終了タグを持たない HTML 要素 */
+const VOID_ELEMENTS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'source',
+  'track',
+  'wbr',
+]);
 
 function renderList(t: Tokens.List): string {
   const tag = t.ordered ? 'ol' : 'ul';
