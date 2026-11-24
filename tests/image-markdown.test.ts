@@ -134,3 +134,95 @@ describe('markdownToBlocks: 参照形式の画像（レビュー指摘）', () =
     );
   });
 });
+
+describe('markdownToBlocks: 引用の中の画像', () => {
+  it('引用の中の画像も画像ブロックにする', () => {
+    const out = markdownToBlocks('> ![ポスター](https://e/p.jpg){id=450 size=full}');
+    expect(out).toContain(
+      '<!-- wp:image {"id":450,"sizeSlug":"full","linkDestination":"none"} -->\n<figure class="wp-block-image size-full"><img src="https://e/p.jpg" alt="ポスター" class="wp-image-450"/></figure>',
+    );
+    expect(out.startsWith('<!-- wp:quote -->')).toBe(true);
+  });
+});
+
+describe('markdownToBlocks: 画像の行と文章が同じ段落になったとき（レビュー指摘）', () => {
+  it('引用の中で画像の直後に引用元が続いても、画像ブロックと段落に分ける', () => {
+    const out = markdownToBlocks(
+      '> ![ポスター](https://e/p.jpg){id=450 size=full}\n> 引用元：公式',
+    );
+    expect(out).toContain(
+      '<!-- wp:image {"id":450,"sizeSlug":"full","linkDestination":"none"} -->',
+    );
+    expect(out).toContain('<p>引用元：公式</p>');
+    expect(out).not.toContain('{id=');
+  });
+
+  it('文章 → 画像 → 文章の順でも分ける', () => {
+    const out = markdownToBlocks('前\n![a](https://e/a.jpg){id=1}\n後');
+    const order = ['<p>前</p>', 'wp-image-1', '<p>後</p>'].map((s) => out.indexOf(s));
+    expect(order.every((n) => n >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
+
+describe('markdownToBlocks: 改行をまたぐインラインコード（レビュー指摘）', () => {
+  it('インラインコードの中の画像の記法は画像ブロックにしない', () => {
+    const out = markdownToBlocks('説明 `\n![a](https://e/a.jpg)\n`');
+    expect(out).not.toContain('wp:image');
+    expect(out).toContain('<code>');
+    expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
+  });
+});
+
+describe('markdownToBlocks: インラインコードとコードの外の画像が同じ段落にあるとき（レビュー指摘）', () => {
+  it('コードの外の画像の行は画像ブロックに分ける', () => {
+    const out = markdownToBlocks('> 説明 `前\n> 後`\n> ![a](https://e/a.jpg){id=1}\n> 引用元');
+    expect(out).toContain('<!-- wp:image {"id":1,"sizeSlug":"large","linkDestination":"none"} -->');
+    expect(out).not.toContain('{id=1}');
+    expect(out).toContain('<code>前 後</code>'); // インラインコードの改行は空白になる（CommonMark）
+    expect(out).toContain('<p>引用元</p>');
+  });
+});
+
+describe('markdownToBlocks: 改行をまたぐリンク・強調の中の画像（レビュー指摘）', () => {
+  it('リンクの中の画像の行は分けず、リンクを保つ', () => {
+    const out = markdownToBlocks('[リンク\n![a](https://e/a.jpg)\n説明](https://example.com/)');
+    expect(out).not.toContain('wp:image');
+    expect(out).toContain('<a href="https://example.com/">');
+    expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
+  });
+
+  it('強調の中の画像の行も分けない', () => {
+    const out = markdownToBlocks('**太字\n![a](https://e/a.jpg)\n続き**');
+    expect(out).not.toContain('wp:image');
+    expect(out).toContain('<strong>');
+  });
+
+  it('リンクと同じ段落でも、リンクの外の画像の行は分ける', () => {
+    const out = markdownToBlocks(
+      '[前\n後](https://example.com/)\n![a](https://e/a.jpg){id=1}\n引用元',
+    );
+    expect(out).toContain('<!-- wp:image {"id":1,"sizeSlug":"large","linkDestination":"none"} -->');
+    expect(out).toContain('<a href="https://example.com/">');
+    expect(out).toContain('<p>引用元</p>');
+  });
+});
+
+describe('markdownToBlocks: インラインの HTML 要素の中の画像（レビュー指摘）', () => {
+  it('開始タグと終了タグの間の画像の行は分けない', () => {
+    const out = markdownToBlocks('前 <span>\n![a](https://e/a.jpg)\n</span> 続き', {});
+    expect(out).not.toContain('wp:image');
+    expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
+  });
+
+  it('HTML 要素の外の画像の行は分ける', () => {
+    const out = markdownToBlocks('<span>前</span>\n![a](https://e/a.jpg){id=1}\n引用元');
+    expect(out).toContain('<!-- wp:image {"id":1,"sizeSlug":"large","linkDestination":"none"} -->');
+    expect(out).toContain('<p>引用元</p>');
+  });
+
+  it('<br> のような終了タグの無い要素では守らない', () => {
+    const out = markdownToBlocks('前<br>\n![a](https://e/a.jpg){id=1}\n引用元');
+    expect(out).toContain('wp-image-1');
+  });
+});

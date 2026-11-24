@@ -125,7 +125,7 @@ await poster.upsertBySlug('posts', input, { statusOnUpdate: 'omit' });
 
 ### 本文の画像
 
-本文の画像は、単独行で次のように書く。`{…}` は省略できる。
+本文の画像は、単独行で次のように書く（引用 `> ` の中に書いてもよい）。`{…}` は省略できる。
 
 ```md
 ![alt](src "キャプション"){id=712 size=large width=852px height=auto}

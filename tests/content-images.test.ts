@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { WPClient } from '../src/client.js';
-import { resolveContentImages } from '../src/content-images.js';
+import { resolveContentImages, splitBlockquote } from '../src/content-images.js';
 
 interface Call {
   url: string;
@@ -278,5 +278,110 @@ describe('resolveContentImages: コード・置換記号・親の未設定（レ
     const wp = fakeWP();
     const res = await resolveContentImages(`![a](${SRC})`, wp.client, { fetch: wp.fetch });
     expect(res.unattachedMediaIds).toEqual([100]);
+  });
+});
+
+describe('resolveContentImages: 引用の中の画像', () => {
+  it('引用＋画像＋引用元（作品ごとのポスター）の画像を解決し、引用の記号は残す', async () => {
+    const wp = fakeWP();
+    const md = `> ![エイリアン](${SRC})\n>\n> 引用元：[公式](https://example.com/)`;
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown.split('\n')[0]).toBe(
+      `> ![エイリアン](https://wp.example/wp-content/uploads/2026/11/alien-${key(SRC)}-724x1024.jpg){id=100 size=large}`,
+    );
+    expect(res.markdown.split('\n').slice(1).join('\n')).toBe(
+      '>\n> 引用元：[公式](https://example.com/)',
+    );
+    expect(res.images[0].action).toBe('uploaded');
+  });
+
+  it('入れ子の引用・記号の後に空白が無い書き方も解決する', async () => {
+    const wp = fakeWP();
+    const res = await resolveContentImages(`> > ![a](${SRC})\n>![b](${SRC})`, wp.client, {
+      fetch: wp.fetch,
+    });
+    const [l1, l2] = res.markdown.split('\n');
+    expect(l1.startsWith('> > ![a](https://wp.example/')).toBe(true);
+    expect(l2.startsWith('>![b](https://wp.example/')).toBe(true);
+    expect(res.uploadedMediaIds).toEqual([100]);
+  });
+
+  it('引用の中のインデントのコードブロックは扱わない', async () => {
+    const wp = fakeWP();
+    const md = `>     ![a](${SRC})`;
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
+  });
+});
+
+describe('resolveContentImages: 引用とコードの境界（レビュー指摘）', () => {
+  it('記号の直後のタブは 1 桁だけ記号が消費する: >\\t  は 4 桁の字下げ＝コード、>\\t は通常の画像', async () => {
+    const wp = fakeWP();
+    const code = `>\t  ![a](${SRC})`;
+    const res = await resolveContentImages(`${code}\n\n>\t![b](${SRC})`, wp.client, {
+      fetch: wp.fetch,
+    });
+    const [l1, , l3] = res.markdown.split('\n');
+    expect(l1).toBe(code);
+    expect(l3.startsWith('>\t![b](https://wp.example/')).toBe(true);
+    expect(res.images.map((i) => i.action)).toEqual(['uploaded']);
+  });
+
+  it('引用の外で開いたフェンスの中の `> ```` では閉じない', async () => {
+    const wp = fakeWP();
+    const md = ['```md', '> ```', `> ![a](${SRC})`, '```'].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
+  });
+
+  it('引用の中で開いたフェンスは、引用が終わった時点で閉じる', async () => {
+    const wp = fakeWP();
+    const md = ['> ```', '> code', `![a](${SRC})`].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.images.map((i) => i.action)).toEqual(['uploaded']);
+    expect(res.markdown.split('\n').slice(0, 2).join('\n')).toBe('> ```\n> code');
+  });
+
+  it('引用の中で明示的に閉じたフェンスの中は従来どおり扱わない', async () => {
+    const wp = fakeWP();
+    const md = ['> ```', `> ![a](${SRC})`, '> ```', `> ![b](${SRC})`].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown.split('\n')[1]).toBe(`> ![a](${SRC})`);
+    expect(res.markdown.split('\n')[3].startsWith('> ![b](https://wp.example/')).toBe(true);
+  });
+});
+
+describe('splitBlockquote', () => {
+  it('深さ・中身・字下げの桁数を返す', () => {
+    expect(splitBlockquote('> > ![a](x)')).toEqual({
+      prefix: '> > ',
+      content: '![a](x)',
+      depth: 2,
+      indent: 0,
+    });
+    expect(splitBlockquote('   >x')).toEqual({ prefix: '   >', content: 'x', depth: 1, indent: 0 });
+    expect(splitBlockquote('    > x').depth).toBe(0); // 4 桁の字下げはコードで引用ではない
+    expect(splitBlockquote('>\t  x').indent).toBe(4);
+    expect(splitBlockquote('>\tx').indent).toBe(2);
+    expect(splitBlockquote('本文')).toEqual({ prefix: '', content: '本文', depth: 0, indent: 0 });
+  });
+});
+
+describe('resolveContentImages: フェンスの実効の字下げ（レビュー指摘）', () => {
+  it('>\\t  ``` は 4 桁の字下げなのでフェンスを開かない（後ろの画像は解決する）', async () => {
+    const wp = fakeWP();
+    const md = [`>\t  \`\`\``, '>', `> ![a](${SRC})`].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.images.map((i) => i.action)).toEqual(['uploaded']);
+  });
+
+  it('引用の中で開いたフェンスは、4 桁の字下げの ``` では閉じない', async () => {
+    const wp = fakeWP();
+    const md = ['> ```', `>\t  \`\`\``, `> ![a](${SRC})`, '> ```'].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
   });
 });
