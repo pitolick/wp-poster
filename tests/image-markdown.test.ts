@@ -164,3 +164,12 @@ describe('markdownToBlocks: 画像の行と文章が同じ段落になったと�
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
+
+describe('markdownToBlocks: 改行をまたぐインラインコード（レビュー指摘）', () => {
+  it('インラインコードの中の画像の記法は画像ブロックにしない', () => {
+    const out = markdownToBlocks('説明 `\n![a](https://e/a.jpg)\n`');
+    expect(out).not.toContain('wp:image');
+    expect(out).toContain('<code>');
+    expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
+  });
+});

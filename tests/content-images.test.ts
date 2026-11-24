@@ -368,3 +368,20 @@ describe('splitBlockquote', () => {
     expect(splitBlockquote('本文')).toEqual({ prefix: '', content: '本文', depth: 0, indent: 0 });
   });
 });
+
+describe('resolveContentImages: フェンスの実効の字下げ（レビュー指摘）', () => {
+  it('>\\t  ``` は 4 桁の字下げなのでフェンスを開かない（後ろの画像は解決する）', async () => {
+    const wp = fakeWP();
+    const md = [`>\t  \`\`\``, '>', `> ![a](${SRC})`].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.images.map((i) => i.action)).toEqual(['uploaded']);
+  });
+
+  it('引用の中で開いたフェンスは、4 桁の字下げの ``` では閉じない', async () => {
+    const wp = fakeWP();
+    const md = ['> ```', `>\t  \`\`\``, `> ![a](${SRC})`, '> ```'].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
+  });
+});

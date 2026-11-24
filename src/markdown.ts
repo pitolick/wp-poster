@@ -58,7 +58,12 @@ function renderParagraph(t: Tokens.Paragraph): string {
   // 1 つの段落になる。画像の行を画像ブロックに、残りの行を段落に分ける。分けないと `{id=…}` が
   // 本文に文字として出てしまう
   const lines = t.raw.replace(/\n+$/, '').split('\n');
-  if (lines.length > 1 && lines.some((l) => parseImageMarkdown(l))) {
+  // 改行をまたぐインラインコードの中の行は画像として分けない（コードの中身が画像ブロックに化ける）
+  if (
+    lines.length > 1 &&
+    !hasMultilineCodespan(t.tokens) &&
+    lines.some((l) => parseImageMarkdown(l))
+  ) {
     const blocks: string[] = [];
     let buf: string[] = [];
     const flush = () => {
@@ -85,6 +90,14 @@ function renderParagraph(t: Tokens.Paragraph): string {
   }
   const inline = renderInlineText(t.text);
   return wrapBlock('paragraph', `<p>${inline}</p>`);
+}
+
+function hasMultilineCodespan(tokens: Token[] | undefined): boolean {
+  return (tokens ?? []).some(
+    (tk) =>
+      (tk.type === 'codespan' && tk.raw.includes('\n')) ||
+      hasMultilineCodespan((tk as { tokens?: Token[] }).tokens),
+  );
 }
 
 function renderList(t: Tokens.List): string {

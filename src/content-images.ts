@@ -202,12 +202,13 @@ export async function resolveContentImages(
         // 引用が終わったので、引用の中で開いたフェンスも終わる。この行は通常どおり扱う
         fence = null;
       } else {
-        const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+        // フェンスに使える字下げは 3 桁まで（引用記号の後のタブの残り幅も含めた実効の字下げで判定）
+        const close = quote.indent <= 3 ? /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(line) : null;
         if (close && close[1][0] === fence.char && close[1].length >= fence.length) fence = null;
         continue;
       }
     }
-    const open = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    const open = quote.indent <= 3 ? /^[ \t]*(`{3,}|~{3,})/.exec(line) : null;
     if (open) {
       fence = { char: open[1][0], length: open[1].length, depth: quote.depth };
       continue;
