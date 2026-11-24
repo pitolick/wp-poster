@@ -23,7 +23,9 @@ function jsonRes(body: unknown, status = 200): Response {
 }
 
 /** メディアライブラリを模したモック。アップロードされたメディアは検索で見つかるようになる */
-function fakeWP(initial: Array<{ id: number; source_url: string; title: string }> = []) {
+function fakeWP(
+  initial: Array<{ id: number; source_url: string; title: string; post?: number }> = [],
+) {
   const media = [...initial];
   const calls: Call[] = [];
   let nextId = 100;
@@ -49,6 +51,7 @@ function fakeWP(initial: Array<{ id: number; source_url: string; title: string }
           id: m.id,
           source_url: m.source_url,
           media_type: 'image',
+          post: m.post ?? 0,
           media_details: {
             sizes: { large: { source_url: m.source_url.replace('.jpg', '-724x1024.jpg') } },
           },
@@ -204,5 +207,76 @@ describe('resolveContentImages', () => {
     const upload = wp.calls.find((c) => c.method === 'POST' && c.url.endsWith('/wp/v2/media'))!;
     expect(upload.headers['Content-Disposition']).toContain(`E3-83-9D`);
     expect(res.images[0].action).toBe('uploaded');
+  });
+});
+
+describe('resolveContentImages: コード・置換記号・親の未設定（レビュー指摘）', () => {
+  it('4 個のバッククォートのフェンスの中にある ``` では閉じない', async () => {
+    const wp = fakeWP();
+    const md = ['````md', '```', `![a](${SRC})`, '```', '````'].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
+  });
+
+  it('バッククォートのフェンスの中の ~~~ では閉じない', async () => {
+    const wp = fakeWP();
+    const md = ['```', '~~~', `![a](${SRC})`, '```'].join('\n');
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+  });
+
+  it('フェンスが閉じた後の画像は解決する', async () => {
+    const wp = fakeWP();
+    const res = await resolveContentImages(
+      ['~~~', 'code', '~~~~', '', `![a](${SRC})`].join('\n'),
+      wp.client,
+      {
+        fetch: wp.fetch,
+      },
+    );
+    expect(res.images.map((i) => i.action)).toEqual(['uploaded']);
+  });
+
+  it('4 文字以上の字下げ（インデントのコードブロック）は画像として扱わない', async () => {
+    const wp = fakeWP();
+    const md = `例:\n\n    ![a](${SRC})\n\t![b](${SRC})`;
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
+  });
+
+  it('キャプションの $& などを置換記号として展開しない', async () => {
+    const wp = fakeWP();
+    const res = await resolveContentImages(`![a](${SRC} "価格 $& と $' と $\`")`, wp.client, {
+      fetch: wp.fetch,
+    });
+    expect(res.markdown).toContain(`"価格 $& と $' と $\`"){id=100 size=large}`);
+  });
+
+  it('再利用したメディアの親が未設定なら、親を設定する対象に入れる（前回の失敗を回復）', async () => {
+    const k = key(SRC);
+    const wp = fakeWP([
+      { id: 7, source_url: `https://wp.example/u/alien-${k}.jpg`, title: `alien-${k}`, post: 0 },
+    ]);
+    const res = await resolveContentImages(`![a](${SRC})`, wp.client, { fetch: wp.fetch });
+    expect(res.images[0].action).toBe('reused');
+    expect(res.uploadedMediaIds).toEqual([]);
+    expect(res.unattachedMediaIds).toEqual([7]);
+  });
+
+  it('再利用したメディアに親が付いていれば付け替えない', async () => {
+    const k = key(SRC);
+    const wp = fakeWP([
+      { id: 7, source_url: `https://wp.example/u/alien-${k}.jpg`, title: `alien-${k}`, post: 42 },
+    ]);
+    const res = await resolveContentImages(`![a](${SRC})`, wp.client, { fetch: wp.fetch });
+    expect(res.unattachedMediaIds).toEqual([]);
+  });
+
+  it('新たにアップロードしたメディアは親を設定する対象に入る', async () => {
+    const wp = fakeWP();
+    const res = await resolveContentImages(`![a](${SRC})`, wp.client, { fetch: wp.fetch });
+    expect(res.unattachedMediaIds).toEqual([100]);
   });
 });

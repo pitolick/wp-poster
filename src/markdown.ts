@@ -54,6 +54,11 @@ function renderParagraph(t: Tokens.Paragraph): string {
   // alt / src の属性値のエスケープは renderImageBlock が行う
   const image = parseImageMarkdown(t.raw);
   if (image) return renderImageBlock(image);
+  // 参照形式（`![a][ref]`）など、上の記法に当たらない単独の画像も従来どおり core/image にする
+  if (t.tokens && t.tokens.length === 1 && t.tokens[0].type === 'image') {
+    const img = t.tokens[0] as Tokens.Image;
+    return renderImageBlock({ alt: img.text ?? '', src: img.href });
+  }
   const inline = renderInlineText(t.text);
   return wrapBlock('paragraph', `<p>${inline}</p>`);
 }

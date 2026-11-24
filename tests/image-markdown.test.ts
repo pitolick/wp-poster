@@ -125,3 +125,12 @@ describe('parseImageMarkdown / formatImageMarkdown', () => {
     expect(parseImageMarkdown(line)).toEqual(image);
   });
 });
+
+describe('markdownToBlocks: 参照形式の画像（レビュー指摘）', () => {
+  it('![a][ref] の単独画像も core/image にする', () => {
+    const out = markdownToBlocks('![ポスター][p]\n\n[p]: https://e/p.jpg');
+    expect(out).toContain(
+      '<!-- wp:image -->\n<figure class="wp-block-image"><img src="https://e/p.jpg" alt="ポスター"/></figure>\n<!-- /wp:image -->',
+    );
+  });
+});

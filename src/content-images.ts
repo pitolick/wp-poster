@@ -46,15 +46,21 @@ export interface ResolvedContentImage {
 export interface ResolveContentImagesResult {
   markdown: string;
   images: ResolvedContentImage[];
-  /** この呼び出しで新たにアップロードしたメディア ID（投稿確定後に親を設定する対象） */
+  /** この呼び出しで新たにアップロードしたメディア ID */
   uploadedMediaIds: number[];
+  /**
+   * 投稿確定後に親投稿を設定すべきメディア ID。新たにアップロードしたものに加え、再利用したが
+   * 親が未設定（`post` が 0）のもの。前回の投稿で親の設定だけが失敗した画像を、再投稿で回復する。
+   * 親が設定済みの再利用メディアは含めない（別の投稿の画像を付け替えない）
+   */
+  unattachedMediaIds: number[];
 }
 
 interface MediaDetails {
   sizes?: Record<string, { source_url: string }>;
 }
 
-type MediaWithSizes = WPMedia & { media_details?: MediaDetails };
+type MediaWithSizes = WPMedia & { media_details?: MediaDetails; post?: number | null };
 
 function isRemote(src: string): boolean {
   return /^https?:\/\//i.test(src);
@@ -90,7 +96,7 @@ function pickSize(media: MediaWithSizes, wanted: string): { src: string; size: s
 async function findMediaByKey(client: WPClient, key: string): Promise<MediaWithSizes | null> {
   // WP のメディア検索はタイトル・本文・抜粋が対象（ファイル名は対象外）。アップロード時に
   // 鍵入りのファイル名をタイトルにしているので、それで当てる
-  const q = `search=${key}&per_page=20&_fields=id,source_url,media_type,media_details`;
+  const q = `search=${key}&per_page=20&_fields=id,source_url,media_type,media_details,post`;
   const found = await client.get<MediaWithSizes[]>(`/wp-json/wp/v2/media?${q}`);
   // 検索はタイトル等の部分一致なので、ファイルの URL に鍵が入っているものだけを同じ画像とみなす
   return found.find((m) => typeof m.source_url === 'string' && m.source_url.includes(key)) ?? null;
@@ -114,17 +120,29 @@ export async function resolveContentImages(
   const lines = markdown.split('\n');
   const images: ResolvedContentImage[] = [];
   const uploadedMediaIds: number[] = [];
+  const unattachedMediaIds: number[] = [];
   // 同じ画像が本文に 2 回出てきても 1 回だけ照合・アップロードする
   const cache = new Map<string, MediaWithSizes>();
-  let inFence = false;
+  // 開いているコードフェンス（文字と長さ）。閉じるのは同じ文字で同じ長さ以上のフェンスだけ
+  let fence: { char: string; length: number } | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
-      continue;
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      if (!fence) {
+        fence = { char: marker[0], length: marker.length };
+        continue;
+      }
+      if (marker[0] === fence.char && marker.length >= fence.length && line.trim() === marker) {
+        fence = null;
+        continue;
+      }
     }
-    if (inFence) continue;
+    if (fence) continue;
+    // 4 文字以上の字下げ（タブ含む）はインデントのコードブロック。画像として扱わない
+    if (/^(?: {4}|\t)/.test(line)) continue;
     const image = parseImageMarkdown(line);
     if (!image || image.id !== undefined) continue;
 
@@ -167,14 +185,18 @@ export async function resolveContentImages(
           alt: image.alt,
         })) as MediaWithSizes;
         uploadedMediaIds.push(media.id);
+        unattachedMediaIds.push(media.id);
         action = 'uploaded';
+      } else if (!media.post) {
+        unattachedMediaIds.push(media.id);
       }
       cache.set(key, media);
     }
 
     const picked = pickSize(media, wanted);
     const resolved: ContentImage = { ...image, id: media.id, src: picked.src, size: picked.size };
-    lines[i] = line.replace(line.trim(), formatImageMarkdown(resolved));
+    // 置換文字列だと caption の `$&` などが置換記号として展開されるので、関数で渡す
+    lines[i] = line.replace(line.trim(), () => formatImageMarkdown(resolved));
     images.push({
       source: image.src,
       action,
@@ -185,7 +207,7 @@ export async function resolveContentImages(
     });
   }
 
-  return { markdown: lines.join('\n'), images, uploadedMediaIds };
+  return { markdown: lines.join('\n'), images, uploadedMediaIds, unattachedMediaIds };
 }
 
 const MIME_FROM_EXT: Record<string, string> = {

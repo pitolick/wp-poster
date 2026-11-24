@@ -87,8 +87,8 @@ export interface UpsertResult {
 interface BuiltPayload {
   payload: Record<string, unknown>;
   contentImages: ResolvedContentImage[];
-  /** 本文の画像としてこの投稿で新たにアップロードしたメディア */
-  uploadedContentMediaIds: number[];
+  /** 本文の画像のうち、投稿確定後に親を設定するメディア（新たに上げたもの＋親が未設定の再利用） */
+  unattachedContentMediaIds: number[];
 }
 
 export class WPPoster {
@@ -178,15 +178,16 @@ export class WPPoster {
    * バイナリ upload の時点では投稿 ID が未確定のため、投稿確定後にメディアの `post` を
    * 設定しないと親削除時に孤児メディアとして残ってしまう。
    *
-   * 本文の画像は**この投稿で新たにアップロードしたものだけ**。再利用したメディアは
-   * 別の投稿の親が付いていることがあり、付け替えると元の投稿から外れてしまう。
+   * 本文の画像は**新たにアップロードしたものと、親が未設定の再利用メディアだけ**。親が付いている
+   * 再利用メディアは別の投稿の画像なので、付け替えると元の投稿から外れてしまう。親の未設定を
+   * 拾うのは、前回の投稿で親の設定だけが失敗した画像を再投稿で回復するため。
    */
   private async attachMedia(built: BuiltPayload, postId: number): Promise<void> {
     const mediaId = built.payload.featured_media;
     if (typeof mediaId === 'number' && mediaId > 0) {
       await this.client.updateAt('media', mediaId, { post: postId });
     }
-    for (const id of built.uploadedContentMediaIds) {
+    for (const id of built.unattachedContentMediaIds) {
       await this.client.updateAt('media', id, { post: postId });
     }
   }
@@ -197,7 +198,7 @@ export class WPPoster {
   ): Promise<BuiltPayload> {
     const payload: Record<string, unknown> = {};
     let contentImages: ResolvedContentImage[] = [];
-    let uploadedContentMediaIds: number[] = [];
+    let unattachedContentMediaIds: number[] = [];
 
     if (input.title !== undefined) payload.title = input.title;
     if (input.slug !== undefined) payload.slug = input.slug;
@@ -215,7 +216,7 @@ export class WPPoster {
         });
         content = resolved.markdown;
         contentImages = resolved.images;
-        uploadedContentMediaIds = resolved.uploadedMediaIds;
+        unattachedContentMediaIds = resolved.unattachedMediaIds;
         for (const image of contentImages) options.onContentImage?.(image);
       }
       payload.content = markdownToBlocks(content, {
@@ -243,6 +244,6 @@ export class WPPoster {
       payload.meta = buildMetaPayload(input.meta);
     }
 
-    return { payload, contentImages, uploadedContentMediaIds };
+    return { payload, contentImages, unattachedContentMediaIds };
   }
 }
