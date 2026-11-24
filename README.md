@@ -109,6 +109,20 @@ console.log(post.link);
 
 既存投稿を更新する。`input` は `PostInput` の部分集合。
 
+### `poster.upsertBySlug(postType, input, options?)`
+
+`input.slug` を自然キーに、一致する投稿があれば更新（`slug` は再送しない）、無ければ作成する。記事（`posts`）とカスタム投稿タイプ（`affilicard_product` など）を共通で扱う。戻り値は `{ id, created, link }`。
+
+| オプション | 既定 | 説明 |
+| --- | --- | --- |
+| `statusOnUpdate` | `'send'` | 既存投稿を**更新するとき**に `input.status` を送るか。`'omit'` にすると送らず、WP 上の公開状態を保つ（draft の `status: draft` で公開記事を下書きに戻す事故を防ぐ）。新規作成では常に送る |
+| `cacheBust` / `fetch` | — | `publish` / `update` と同じ |
+
+```ts
+// 公開状態は WP 管理画面で決める運用（再投稿で下書きに戻さない）
+await poster.upsertBySlug('posts', input, { statusOnUpdate: 'omit' });
+```
+
 ### マーカートランスフォーマー
 
 Markdown 中の任意パターンを Gutenberg ブロックに置換する。
