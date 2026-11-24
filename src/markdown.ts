@@ -57,13 +57,12 @@ function renderParagraph(t: Tokens.Paragraph): string {
   // 画像の行の直後に空行を挟まず文章が続くと（`> ![…](…){id=…}` の次の行に `> 引用元：…` など）
   // 1 つの段落になる。画像の行を画像ブロックに、残りの行を段落に分ける。分けないと `{id=…}` が
   // 本文に文字として出てしまう
-  const lines = t.raw.replace(/\n+$/, '').split('\n');
-  // 改行をまたぐインラインコードの中の行は画像として分けない（コードの中身が画像ブロックに化ける）
-  if (
-    lines.length > 1 &&
-    !hasMultilineCodespan(t.tokens) &&
-    lines.some((l) => parseImageMarkdown(l))
-  ) {
+  const lines = t.text.split('\n');
+  // 改行をまたぐインラインコードが触れる行は画像として分けない（コードの中身が画像ブロックに化ける）。
+  // コードの外の画像の行は分ける
+  const inCode = linesInMultilineCode(t.text, t.tokens);
+  const isImageLine = (l: string, i: number) => !inCode.has(i) && parseImageMarkdown(l) !== null;
+  if (lines.length > 1 && lines.some(isImageLine)) {
     const blocks: string[] = [];
     let buf: string[] = [];
     const flush = () => {
@@ -71,8 +70,8 @@ function renderParagraph(t: Tokens.Paragraph): string {
         blocks.push(wrapBlock('paragraph', `<p>${renderInlineText(buf.join('\n'))}</p>`));
       buf = [];
     };
-    for (const l of lines) {
-      const img = parseImageMarkdown(l);
+    for (const [i, l] of lines.entries()) {
+      const img = isImageLine(l, i) ? parseImageMarkdown(l) : null;
       if (img) {
         flush();
         blocks.push(renderImageBlock(img));
@@ -98,6 +97,32 @@ function hasMultilineCodespan(tokens: Token[] | undefined): boolean {
       (tk.type === 'codespan' && tk.raw.includes('\n')) ||
       hasMultilineCodespan((tk as { tokens?: Token[] }).tokens),
   );
+}
+
+/**
+ * 段落の本文のうち、改行をまたぐインラインコードが触れる行の番号を返す。
+ * インラインのトークンの raw を順につなぐと本文になるので、その位置から行を割り出す。
+ * つながらない（位置を特定できない）ときは、安全側に倒して全行を返す。
+ */
+function linesInMultilineCode(text: string, tokens: Token[] | undefined): Set<number> {
+  const lineOf = (offset: number) => text.slice(0, offset).split('\n').length - 1;
+  const all = () => new Set(text.split('\n').map((_, i) => i));
+  const list = tokens ?? [];
+  if (!hasMultilineCodespan(list)) return new Set();
+  if (list.map((tk) => tk.raw).join('') !== text) return all();
+  const lines = new Set<number>();
+  let offset = 0;
+  for (const tk of list) {
+    const start = offset;
+    offset += tk.raw.length;
+    const multiline =
+      tk.type === 'codespan'
+        ? tk.raw.includes('\n')
+        : hasMultilineCodespan((tk as { tokens?: Token[] }).tokens);
+    if (!multiline) continue;
+    for (let i = lineOf(start); i <= lineOf(offset); i++) lines.add(i);
+  }
+  return lines;
 }
 
 function renderList(t: Tokens.List): string {

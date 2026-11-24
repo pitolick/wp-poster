@@ -173,3 +173,13 @@ describe('markdownToBlocks: 改行をまたぐインラインコード（レビ�
     expect((out.match(/<!-- wp:paragraph -->/g) ?? []).length).toBe(1);
   });
 });
+
+describe('markdownToBlocks: インラインコードとコードの外の画像が同じ段落にあるとき（レビュー指摘）', () => {
+  it('コードの外の画像の行は画像ブロックに分ける', () => {
+    const out = markdownToBlocks('> 説明 `前\n> 後`\n> ![a](https://e/a.jpg){id=1}\n> 引用元');
+    expect(out).toContain('<!-- wp:image {"id":1,"sizeSlug":"large","linkDestination":"none"} -->');
+    expect(out).not.toContain('{id=1}');
+    expect(out).toContain('<code>前 後</code>'); // インラインコードの改行は空白になる（CommonMark）
+    expect(out).toContain('<p>引用元</p>');
+  });
+});
