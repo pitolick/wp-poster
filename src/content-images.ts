@@ -110,7 +110,7 @@ async function findMediaByKey(client: WPClient, key: string): Promise<MediaWithS
  * 3. 無ければダウンロードして `<元の名前>-<鍵>.<拡張子>` でアップロードする
  * 4. 行を `id`・サイズ別の URL・`size` を埋めた形に書き換える
  *
- * `id` が既にある画像・コードブロックの中は触らない。
+ * `id` が既にある画像・コードブロックの中は触らない。引用（`> `）の中の画像は解決する。
  */
 export async function resolveContentImages(
   markdown: string,
@@ -127,7 +127,11 @@ export async function resolveContentImages(
   let fence: { char: string; length: number } | null = null;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    // 引用（`> `、入れ子の `> > ` も）の中の画像も解決する。記号を外した中身で判定し、書き戻すときに付け直す。
+    // 作品ごとのポスターを「引用＋画像＋引用元」で見せる書き方（フィルムログの予習・復習記事）がこれに当たる
+    const quoteMarker = /^(?: {0,3}>[ \t]?)+/.exec(lines[i]);
+    const prefix = quoteMarker ? quoteMarker[0] : '';
+    const line = lines[i].slice(prefix.length);
     const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (fenceMatch) {
       const marker = fenceMatch[1];
@@ -197,7 +201,7 @@ export async function resolveContentImages(
     const picked = pickSize(media, wanted);
     const resolved: ContentImage = { ...image, id: media.id, src: picked.src, size: picked.size };
     // 置換文字列だと caption の `$&` などが置換記号として展開されるので、関数で渡す
-    lines[i] = line.replace(line.trim(), () => formatImageMarkdown(resolved));
+    lines[i] = prefix + line.replace(line.trim(), () => formatImageMarkdown(resolved));
     images.push({
       source: image.src,
       action,

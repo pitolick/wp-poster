@@ -280,3 +280,37 @@ describe('resolveContentImages: コード・置換記号・親の未設定（レ
     expect(res.unattachedMediaIds).toEqual([100]);
   });
 });
+
+describe('resolveContentImages: 引用の中の画像', () => {
+  it('引用＋画像＋引用元（作品ごとのポスター）の画像を解決し、引用の記号は残す', async () => {
+    const wp = fakeWP();
+    const md = `> ![エイリアン](${SRC})\n>\n> 引用元：[公式](https://example.com/)`;
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown.split('\n')[0]).toBe(
+      `> ![エイリアン](https://wp.example/wp-content/uploads/2026/11/alien-${key(SRC)}-724x1024.jpg){id=100 size=large}`,
+    );
+    expect(res.markdown.split('\n').slice(1).join('\n')).toBe(
+      '>\n> 引用元：[公式](https://example.com/)',
+    );
+    expect(res.images[0].action).toBe('uploaded');
+  });
+
+  it('入れ子の引用・記号の後に空白が無い書き方も解決する', async () => {
+    const wp = fakeWP();
+    const res = await resolveContentImages(`> > ![a](${SRC})\n>![b](${SRC})`, wp.client, {
+      fetch: wp.fetch,
+    });
+    const [l1, l2] = res.markdown.split('\n');
+    expect(l1.startsWith('> > ![a](https://wp.example/')).toBe(true);
+    expect(l2.startsWith('>![b](https://wp.example/')).toBe(true);
+    expect(res.uploadedMediaIds).toEqual([100]);
+  });
+
+  it('引用の中のインデントのコードブロックは扱わない', async () => {
+    const wp = fakeWP();
+    const md = `>     ![a](${SRC})`;
+    const res = await resolveContentImages(md, wp.client, { fetch: wp.fetch });
+    expect(res.markdown).toBe(md);
+    expect(wp.calls).toEqual([]);
+  });
+});

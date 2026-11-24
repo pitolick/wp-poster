@@ -134,3 +134,13 @@ describe('markdownToBlocks: 参照形式の画像（レビュー指摘）', () =
     );
   });
 });
+
+describe('markdownToBlocks: 引用の中の画像', () => {
+  it('引用の中の画像も画像ブロックにする', () => {
+    const out = markdownToBlocks('> ![ポスター](https://e/p.jpg){id=450 size=full}');
+    expect(out).toContain(
+      '<!-- wp:image {"id":450,"sizeSlug":"full","linkDestination":"none"} -->\n<figure class="wp-block-image size-full"><img src="https://e/p.jpg" alt="ポスター" class="wp-image-450"/></figure>',
+    );
+    expect(out.startsWith('<!-- wp:quote -->')).toBe(true);
+  });
+});
