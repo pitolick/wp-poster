@@ -8,7 +8,7 @@ import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
 import { WPPosterError } from './errors.js';
 import { sanitizeSlug } from './slug.js';
 
-export const WP_POSTER_VERSION = '0.5.4';
+export const WP_POSTER_VERSION = '0.6.0';
 
 export type {
   PostInput,
@@ -35,6 +35,22 @@ export interface PublishOptions {
   /** featuredImage ダウンロード時に使う fetch（未指定なら設定の fetch） */
   fetch?: typeof fetch;
 }
+
+/** 既存投稿を更新するときに `status` を送るかどうか。 */
+export type StatusOnUpdate = 'send' | 'omit';
+
+export interface UpsertOptions extends PublishOptions {
+  /**
+   * slug が一致する既存投稿を**更新するとき**の `status` の扱い。新規作成には影響しない（常に送る）。
+   *
+   * - `'send'`（既定）: `input.status` をそのまま送る（従来どおり）
+   * - `'omit'`: `input.status` を送らない。WP 上で公開済みの記事を、draft の `status: draft` で
+   *   下書きに戻してしまう事故を防ぐ（公開状態は WP 管理画面で決める運用向け）
+   */
+  statusOnUpdate?: StatusOnUpdate;
+}
+
+const STATUS_ON_UPDATE_VALUES: readonly StatusOnUpdate[] = ['send', 'omit'];
 
 export interface UpsertResult {
   id: number;
@@ -76,12 +92,22 @@ export class WPPoster {
   /**
    * slug を自然キーに upsert する。slug 一致で update（slug は再送しない）、
    * 無ければ create。記事(`posts`)・CPT(`affilicard_product` 等)を共通で扱う。
+   *
+   * 更新時に `status` を送るかは `options.statusOnUpdate` で選ぶ（既定 `'send'`）。
    */
   async upsertBySlug(
     postType: string,
     input: PostInput,
-    options: PublishOptions = {},
+    options: UpsertOptions = {},
   ): Promise<UpsertResult> {
+    // `??` だと null も既定値に化けて検証をすり抜けるので、既定値は undefined のときだけ
+    const statusOnUpdate = options.statusOnUpdate === undefined ? 'send' : options.statusOnUpdate;
+    // JS からの呼び出し（型検査が効かない）での綴り間違いを黙って 'send' 扱いにしない
+    if (!STATUS_ON_UPDATE_VALUES.includes(statusOnUpdate)) {
+      throw new WPPosterError(
+        `upsertBySlug: statusOnUpdate must be 'send' or 'omit' (got ${JSON.stringify(statusOnUpdate)})`,
+      );
+    }
     if (!input.slug) {
       throw new WPPosterError('upsertBySlug requires input.slug');
     }
@@ -96,6 +122,7 @@ export class WPPoster {
     let created: boolean;
     if (existing) {
       delete payload.slug; // wp_unique_post_slug の `-2` 付与を誘発させない
+      if (statusOnUpdate === 'omit') delete payload.status; // 公開状態は WP 側の値を保つ
       post = await this.client.updateAt(postType, existing.id, payload);
       created = false;
     } else {

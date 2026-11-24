@@ -400,6 +400,76 @@ describe('WPPoster.upsertBySlug', () => {
     await expect(poster.upsertBySlug('posts', { title: 'X', content: '' })).rejects.toThrow(/slug/);
   });
 
+  describe('statusOnUpdate', () => {
+    function existingThenUpdate(): ReturnType<typeof vi.fn> {
+      return vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse([{ id: 99 }])) // findBySlug → あり
+        .mockResolvedValueOnce(jsonResponse({ id: 99, link: 'https://wp.example/?p=99' }));
+    }
+    function sentBodyOf(fetchMock: ReturnType<typeof vi.fn>, call = 1): Record<string, unknown> {
+      return JSON.parse(fetchMock.mock.calls[call][1]?.body as string);
+    }
+    const input = { title: 'X', content: '', slug: 'p-1', status: 'draft' as const };
+
+    it('既定（未指定）は更新時も status を送る（従来どおり）', async () => {
+      const fetchMock = existingThenUpdate();
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      await poster.upsertBySlug('posts', input);
+      expect(sentBodyOf(fetchMock).status).toBe('draft');
+    });
+
+    it("'send' は更新時も status を送る", async () => {
+      const fetchMock = existingThenUpdate();
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      await poster.upsertBySlug('posts', input, { statusOnUpdate: 'send' });
+      expect(sentBodyOf(fetchMock).status).toBe('draft');
+    });
+
+    it("'omit' は更新時に status を送らない（公開記事を下書きに戻さない）", async () => {
+      const fetchMock = existingThenUpdate();
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      const res = await poster.upsertBySlug('posts', input, { statusOnUpdate: 'omit' });
+      expect(res).toEqual({ id: 99, created: false, link: 'https://wp.example/?p=99' });
+      const body = sentBodyOf(fetchMock);
+      expect('status' in body).toBe(false);
+      expect(body.title).toBe('X'); // 他のフィールドは送る
+    });
+
+    it("'omit' でも新規作成では status を送る", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse([])) // findBySlug → なし
+        .mockResolvedValueOnce(jsonResponse({ id: 11, link: 'https://wp.example/?p=11' }));
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      const res = await poster.upsertBySlug('posts', input, { statusOnUpdate: 'omit' });
+      expect(res.created).toBe(true);
+      expect(sentBodyOf(fetchMock).status).toBe('draft');
+    });
+
+    it('null も既定値に置き換えず、通信する前にエラーにする', async () => {
+      const fetchMock = vi.fn();
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      await expect(
+        poster.upsertBySlug('posts', input, {
+          statusOnUpdate: null as unknown as 'omit',
+        }),
+      ).rejects.toThrow(/statusOnUpdate/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('不正な値は通信する前にエラーにする（JS からの綴り間違いを黙って send 扱いにしない）', async () => {
+      const fetchMock = vi.fn();
+      const poster = new WPPoster({ ...base, fetch: fetchMock as unknown as typeof fetch });
+      await expect(
+        poster.upsertBySlug('posts', input, {
+          statusOnUpdate: 'omitt' as unknown as 'omit',
+        }),
+      ).rejects.toThrow(/statusOnUpdate/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
   it('非正規化 slug でも正規化後の slug で検索し update 経路を取る', async () => {
     const fetchMock = vi
       .fn()
