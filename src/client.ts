@@ -102,11 +102,18 @@ export class WPClient {
    *   抜く前で数えるので、途中のページが少なくても（空でも）総ページ数までたどる
    * - ヘッダが無いときは、`per_page` 件に満たないページで終える
    * - `options.maxPages`（既定 1000）を超えたら `WPPosterError`（黙って打ち切らない）
+   * - 2 ページ目以降で WP が「そのページは無い」（400 `rest_post_invalid_page_number`）を返したら、
+   *   そこで終える（ヘッダが無く件数が `per_page` で割り切れるとき・たどる途中で項目が減ったとき）
+   * - `path` に `offset` があれば `WPPosterError`（WP は `page` より `offset` を優先するので、
+   *   ページを進めても同じ範囲が返り続ける）
    */
   async getAll<T>(path: string, options: GetAllOptions = {}): Promise<T[]> {
     const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
     const [base, query = ''] = splitQuery(path);
     const params = new URLSearchParams(query);
+    if (params.has('offset')) {
+      throw new WPPosterError(`getAll: offset cannot be combined with paging (${base})`);
+    }
     if (!params.has('per_page'))
       params.set('per_page', String(options.perPage ?? DEFAULT_PER_PAGE));
     const perPage = Number(params.get('per_page'));
@@ -117,7 +124,14 @@ export class WPClient {
         throw new WPPosterError(`getAll: exceeded maxPages=${maxPages} (${base})`);
       }
       params.set('page', String(page));
-      const { items, totalPages } = await this.getPage<T>(`${base}?${params.toString()}`);
+      let result: WPPage<T>;
+      try {
+        result = await this.getPage<T>(`${base}?${params.toString()}`);
+      } catch (err) {
+        if (page > 1 && isInvalidPageNumber(err)) break;
+        throw err;
+      }
+      const { items, totalPages } = result;
       all.push(...items);
       if (totalPages !== null) {
         if (page >= totalPages) break;
@@ -302,6 +316,17 @@ export class WPClient {
 const DEFAULT_PER_PAGE = 100;
 /** `getAll` がたどるページ数の既定の上限 */
 const DEFAULT_MAX_PAGES = 1000;
+
+/** WP が「そのページは無い」と返したエラーか（400 `rest_post_invalid_page_number`） */
+function isInvalidPageNumber(err: unknown): boolean {
+  if (!(err instanceof WPRequestError) || err.status !== 400) return false;
+  const body = err.body;
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    (body as { code?: unknown }).code === 'rest_post_invalid_page_number'
+  );
+}
 
 /** `X-WP-Total` などの件数ヘッダを読む。無い・0 以上の整数でないときは `null` */
 function readCount(value: string | null): number | null {

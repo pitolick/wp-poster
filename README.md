@@ -141,6 +141,8 @@ const tags = await client.getAll('/wp-json/wp/v2/tags?_fields=id,name,slug');
 
 - WP は権限で読めない項目をページから抜くが、総ページ数は抜く前の件数で数える。そのため `getAll` は「件数が `per_page` に満たないページ」ではなく **`X-WP-TotalPages` まで**たどる（ヘッダが無いときだけ、満たないページで終える）
 - `maxPages`（既定 1000）を超えたら `WPPosterError` を投げる。黙って途中で打ち切らない
+- 2 ページ目以降で WP が「そのページは無い」（400 `rest_post_invalid_page_number`）を返したら、そこで終える
+- `path` に `offset` があれば `WPPosterError`（WP は `page` より `offset` を優先するので、ページを進めても同じ範囲が返る）
 
 ### 本文の画像
 

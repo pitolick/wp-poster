@@ -137,4 +137,48 @@ describe('WPClient.getAll', () => {
       client(fetchMock).getAll('/wp-json/wp/v2/tags?per_page=1', { maxPages: 2 }),
     ).rejects.toThrow(/maxPages=2/);
   });
+
+  it('ヘッダが無く件数が per_page で割り切れるとき、次のページの 400 rest_post_invalid_page_number で終える', async () => {
+    const { fetchMock, urls } = makePagedFetch({
+      [`${B}?per_page=2&page=1`]: { body: [{ id: 1 }, { id: 2 }] },
+      [`${B}?per_page=2&page=2`]: { body: [{ id: 3 }, { id: 4 }] },
+      [`${B}?per_page=2&page=3`]: {
+        body: { code: 'rest_post_invalid_page_number', data: { status: 400 } },
+        status: 400,
+      },
+    });
+    const all = await client(fetchMock).getAll('/wp-json/wp/v2/tags', { perPage: 2 });
+    expect(all.map((t) => (t as { id: number }).id)).toEqual([1, 2, 3, 4]);
+    expect(urls).toHaveLength(3);
+  });
+
+  it('1 ページ目の 400 rest_post_invalid_page_number はそのまま投げる', async () => {
+    const { fetchMock } = makePagedFetch({
+      [`${B}?per_page=100&page=1`]: {
+        body: { code: 'rest_post_invalid_page_number' },
+        status: 400,
+      },
+    });
+    await expect(client(fetchMock).getAll('/wp-json/wp/v2/tags')).rejects.toBeInstanceOf(
+      WPRequestError,
+    );
+  });
+
+  it('2 ページ目以降でも、ほかの 400 はそのまま投げる', async () => {
+    const { fetchMock } = makePagedFetch({
+      [`${B}?per_page=1&page=1`]: { body: [{ id: 1 }], headers: { 'x-wp-totalpages': '2' } },
+      [`${B}?per_page=1&page=2`]: { body: { code: 'rest_invalid_param' }, status: 400 },
+    });
+    await expect(client(fetchMock).getAll('/wp-json/wp/v2/tags?per_page=1')).rejects.toBeInstanceOf(
+      WPRequestError,
+    );
+  });
+
+  it('path に offset があれば WPPosterError（WP は page より offset を優先する）', async () => {
+    const { fetchMock, urls } = makePagedFetch({});
+    await expect(
+      client(fetchMock).getAll('/wp-json/wp/v2/posts?offset=0&per_page=2'),
+    ).rejects.toThrow(/offset/);
+    expect(urls).toHaveLength(0);
+  });
 });
