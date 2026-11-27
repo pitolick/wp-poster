@@ -9,7 +9,7 @@ import type { PostInput, WPPosterConfig, WPPostResponse } from './types.js';
 import { WPPosterError } from './errors.js';
 import { sanitizeSlug } from './slug.js';
 
-export const WP_POSTER_VERSION = '0.7.1';
+export const WP_POSTER_VERSION = '0.8.0';
 
 export type {
   PostInput,
@@ -20,6 +20,8 @@ export type {
   WPPostResponse,
   WPTerm,
   WPMedia,
+  WPPage,
+  GetAllOptions,
   UploadMediaOptions,
 } from './types.js';
 export { WPClient } from './client.js';
