@@ -108,6 +108,34 @@ export interface WPTerm {
 }
 
 /** WP REST メディアのレスポンス */
+/**
+ * `WPClient.getPage` の戻り値。WP REST の一覧系エンドポイントの 1 ページ分。
+ *
+ * WP は権限で読めない項目（他人の下書きなど）をページから**抜いて**返すが、
+ * `X-WP-Total` / `X-WP-TotalPages` は抜く前の件数で数える。そのため
+ * 「`per_page` 件に満たないページ＝最後のページ」とは限らない。全ページをたどるときは
+ * `totalPages` を見る（`WPClient.getAll` はそうしている）。
+ */
+export interface WPPage<T> {
+  /** そのページの項目 */
+  items: T[];
+  /** `X-WP-Total`（総件数）。ヘッダが無い・数として読めないときは `null` */
+  total: number | null;
+  /** `X-WP-TotalPages`（総ページ数）。ヘッダが無い・数として読めないときは `null` */
+  totalPages: number | null;
+}
+
+/** `WPClient.getAll` のオプション */
+export interface GetAllOptions {
+  /** 1 ページの件数。`path` に `per_page` が無いときだけ付ける。既定 100（WP REST の上限） */
+  perPage?: number;
+  /**
+   * たどるページ数の上限。既定 1000。超えたら `WPPosterError` を投げる
+   * （`page` を無視するサーバーで無限に取り続けないための安全弁。黙って打ち切らない）
+   */
+  maxPages?: number;
+}
+
 export interface WPMedia {
   id: number;
   source_url: string;

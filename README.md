@@ -123,6 +123,27 @@ console.log(post.link);
 await poster.upsertBySlug('posts', input, { statusOnUpdate: 'omit' });
 ```
 
+### 一覧を全ページ取る（`WPClient.getPage` / `WPClient.getAll`）
+
+`WPClient.get` は本文だけを返すので、一覧系エンドポイントのページ数（`X-WP-Total` / `X-WP-TotalPages`）を読めない。全件が要るときはこちらを使う。
+
+```ts
+import { WPClient } from '@pitolick/wp-poster';
+
+const client = new WPClient({ url, username, appPassword });
+
+// 1 ページ分と総件数・総ページ数（ヘッダが無ければ null）
+const { items, total, totalPages } = await client.getPage('/wp-json/wp/v2/tags?per_page=100&page=1');
+
+// 最後のページまでたどる（per_page が無ければ 100 を付ける）
+const tags = await client.getAll('/wp-json/wp/v2/tags?_fields=id,name,slug');
+```
+
+- WP は権限で読めない項目をページから抜くが、総ページ数は抜く前の件数で数える。そのため `getAll` は「件数が `per_page` に満たないページ」ではなく **`X-WP-TotalPages` まで**たどる（ヘッダが無いときだけ、満たないページで終える）
+- `maxPages`（既定 1000）を超えたら `WPPosterError` を投げる。黙って途中で打ち切らない
+- 2 ページ目以降で WP が「そのページは無い」（400 `rest_post_invalid_page_number`）を返したら、そこで終える
+- `path` に `offset` があれば `WPPosterError`（WP は `page` より `offset` を優先するので、ページを進めても同じ範囲が返る）
+
 ### 本文の画像
 
 本文の画像は、単独行で次のように書く（引用 `> ` の中に書いてもよい）。`{…}` は省略できる。

@@ -3,9 +3,11 @@ import type {
   WPPostResponse,
   WPTerm,
   WPMedia,
+  WPPage,
+  GetAllOptions,
   UploadMediaOptions,
 } from './types.js';
-import { WPRequestError } from './errors.js';
+import { WPPosterError, WPRequestError } from './errors.js';
 
 type FetchFn = typeof fetch;
 
@@ -74,6 +76,70 @@ export class WPClient {
 
   async get<T>(path: string): Promise<T> {
     return this.request<T>('GET', path);
+  }
+
+  /**
+   * 一覧系エンドポイントの 1 ページを、総件数・総ページ数（`X-WP-Total` / `X-WP-TotalPages`）付きで取る。
+   * 応答が配列でなければ `WPPosterError` を投げる。
+   */
+  async getPage<T>(path: string): Promise<WPPage<T>> {
+    const { body, headers } = await this.send('GET', path);
+    if (!Array.isArray(body)) {
+      throw new WPPosterError(`getPage: response is not an array (${path})`);
+    }
+    return {
+      items: body as T[],
+      total: readCount(headers.get('x-wp-total')),
+      totalPages: readCount(headers.get('x-wp-totalpages')),
+    };
+  }
+
+  /**
+   * 一覧系エンドポイントを最後のページまでたどって、全項目を返す。
+   *
+   * - `path` に `per_page` が無ければ `options.perPage`（既定 100）を付ける。`page` は付け替える
+   * - 終わりの判定は `X-WP-TotalPages`。WP は権限で読めない項目をページから抜くが総ページ数は
+   *   抜く前で数えるので、途中のページが少なくても（空でも）総ページ数までたどる
+   * - ヘッダが無いときは、`per_page` 件に満たないページで終える
+   * - `options.maxPages`（既定 1000）を超えたら `WPPosterError`（黙って打ち切らない）
+   * - 2 ページ目以降で WP が「そのページは無い」（400 `rest_post_invalid_page_number`）を返したら、
+   *   そこで終える（ヘッダが無く件数が `per_page` で割り切れるとき・たどる途中で項目が減ったとき）
+   * - `path` に `offset` があれば `WPPosterError`（WP は `page` より `offset` を優先するので、
+   *   ページを進めても同じ範囲が返り続ける）
+   */
+  async getAll<T>(path: string, options: GetAllOptions = {}): Promise<T[]> {
+    const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
+    const [base, query = ''] = splitQuery(path);
+    const params = new URLSearchParams(query);
+    if (params.has('offset')) {
+      throw new WPPosterError(`getAll: offset cannot be combined with paging (${base})`);
+    }
+    if (!params.has('per_page'))
+      params.set('per_page', String(options.perPage ?? DEFAULT_PER_PAGE));
+    const perPage = Number(params.get('per_page'));
+
+    const all: T[] = [];
+    for (let page = 1; ; page++) {
+      if (page > maxPages) {
+        throw new WPPosterError(`getAll: exceeded maxPages=${maxPages} (${base})`);
+      }
+      params.set('page', String(page));
+      let result: WPPage<T>;
+      try {
+        result = await this.getPage<T>(`${base}?${params.toString()}`);
+      } catch (err) {
+        if (page > 1 && isInvalidPageNumber(err)) break;
+        throw err;
+      }
+      const { items, totalPages } = result;
+      all.push(...items);
+      if (totalPages !== null) {
+        if (page >= totalPages) break;
+      } else if (!(items.length >= perPage)) {
+        break;
+      }
+    }
+    return all;
   }
 
   async postJson<T>(path: string, body: unknown): Promise<T> {
@@ -212,6 +278,16 @@ export class WPClient {
   }
 
   private async request<T>(method: string, path: string, init: RequestInit = {}): Promise<T> {
+    const { body } = await this.send(method, path, init);
+    return body as T;
+  }
+
+  /** 応答の本文とヘッダを返す。HTTP エラーは `WPRequestError` */
+  private async send(
+    method: string,
+    path: string,
+    init: RequestInit = {},
+  ): Promise<{ body: unknown; headers: Headers }> {
     const url = this.resolve(path);
     const headers: Record<string, string> = {
       Authorization: this.auth,
@@ -232,8 +308,37 @@ export class WPClient {
     if (!res.ok) {
       throw new WPRequestError(`${res.status} ${res.statusText}`, res.status, body);
     }
-    return body as T;
+    return { body, headers: res.headers };
   }
+}
+
+/** `getAll` の 1 ページの既定件数（WP REST の `per_page` 上限） */
+const DEFAULT_PER_PAGE = 100;
+/** `getAll` がたどるページ数の既定の上限 */
+const DEFAULT_MAX_PAGES = 1000;
+
+/** WP が「そのページは無い」と返したエラーか（400 `rest_post_invalid_page_number`） */
+function isInvalidPageNumber(err: unknown): boolean {
+  if (!(err instanceof WPRequestError) || err.status !== 400) return false;
+  const body = err.body;
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    (body as { code?: unknown }).code === 'rest_post_invalid_page_number'
+  );
+}
+
+/** `X-WP-Total` などの件数ヘッダを読む。無い・0 以上の整数でないときは `null` */
+function readCount(value: string | null): number | null {
+  if (value === null || value.trim() === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/** `path` を `?` の前後に分ける（クエリが無ければ 2 つ目は `undefined`） */
+function splitQuery(path: string): [string, string | undefined] {
+  const i = path.indexOf('?');
+  return i === -1 ? [path, undefined] : [path.slice(0, i), path.slice(i + 1)];
 }
 
 function delay(ms: number): Promise<void> {
